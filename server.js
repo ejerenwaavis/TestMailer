@@ -5,6 +5,7 @@ if (!SERVER){
 
 const express = require("express");
 const app = express();
+const fs = require("fs");
 const ejs = require("ejs");
 const papa = require("papaparse");
 const bodyParser = require("body-parser")
@@ -17,6 +18,7 @@ const EMAILPASS = process.env.EMAILPASS;
 
 
 /** Email Config */
+const Imap = require('imap');
 const { ImapFlow } = require('imapflow');
 const {simpleParser} = require('mailparser');
 const client = new ImapFlow({
@@ -28,6 +30,14 @@ const client = new ImapFlow({
         pass: EMAILPASS
     }
 });
+
+const imapConfig = {
+  user: EMAILUSER,
+  password: EMAILPASS,
+  host: 'triumphcourier.com', // IMAP server hostname
+  port: 993, // IMAP server port (usually 993 for secure SSL/TLS)
+  tls: true, // Use SSL/TLS
+};
 
 app.set("view engine", "ejs");
 app.use(bodyParser.urlencoded({
@@ -41,7 +51,7 @@ app.route(APP_DIRECTORY + "/")
   .get(async function (req, res) {
     console.error(new Date().toLocaleString() + " >> Request Object: ");
     // let strReq = await stringify(req);
-    let body = await main().catch(err => {
+    let body = await getEmails().catch(err => {
         console.error("\n\nErrors:");
         console.error(err)
     });
@@ -55,81 +65,81 @@ app.route(APP_DIRECTORY + "/")
 
 app.listen(process.env.PORT || 3055, function () {
     console.error(new Date().toLocaleString() + " >> Test Node Mailer running on Port " + ((process.env.PORT) ? process.env.PORT : 3055) + "\n");
-
 });
 
 
 
 /** Helper Funcrions */
 
-async function stringify(obj) {
-  let cache = [];
-  let str = await JSON.stringify(obj, function(key, value) {
-    if (typeof value === "object" && value !== null) {
-      if (cache.indexOf(value) !== -1) {
-        // Circular reference found, discard key
-        return;
-      }
-      // Store value in our collection
-      cache.push(value);
-    }
-    return value;
-  });
-  cache = null; // reset the cache
-  return str;
+
+
+function openInbox(cb) {
+  imap.openBox('INBOX', true, cb);
 }
 
-const getEmails = () => {
+const getEmails = async () => {
   try {
-    const imap = new Imap(imapConfig);
+    // Create an IMAP instance
+    const imap = await new Imap(imapConfig);
     imap.once('ready', () => {
-      imap.openBox('INBOX', false, () => {
-        imap.search(['ALL', ['SINCE', new Date()]], (err, results) => {
-          const f = imap.fetch(results, {bodies: ''});
-          f.on('message', msg => {
-            msg.on('body', stream => {
-              simpleParser(stream, async (err, parsed) => {
-                // const {from, subject, textAsHtml, text} = parsed;
-                console.log(parsed);
-                /* Make API call to save the data
-                   Save the retrieved data into a database.
-                   E.t.c
-                */
-                // return parsed;
-              });
+        openInbox((err, box) => {
+            if (err) throw err;
+            imap.search(['UNSEEN'], (err, results) => {
+                if (err) throw err;
+                const fetch = imap.fetch(results, { bodies: [''], markSeen: true });
+                fetch.on('message', (msg, seqno) => {
+                    msg.on('body', (stream, info) => {
+                        simpleParser(stream, (err, parsed) => {
+                            if (err) throw err;
+
+                            const attachments = parsed.attachments;
+                            if (attachments.length > 0) {
+                            attachments.forEach((attachment) => {
+                                if (attachment.contentType === 'text/csv') {
+                                const fileName = attachment.filename;
+                                const fileContent = attachment.content.toString();
+
+                                // Pass fileName and fileContent to your function here
+                                console.log('File Name:', fileName);
+                                console.log('File Content:', fileContent);
+
+                                // You can also save the CSV file to disk if needed
+                                // fs.writeFileSync(fileName, fileContent);
+                                }
+                            });
+                            }
+                        });
+                    });
+                });
+
+                fetch.once('end', () => {
+                    imap.end();
+                });
             });
-            msg.once('attributes', attrs => {
-              const {uid} = attrs;
-            //   imap.addFlags(uid, ['\\Seen'], () => {
-            //     // Mark the email as read after reading it
-            //     console.log('Marked as read!');
-            //   });
-            });
-          });
-          f.once('error', ex => {
-            return Promise.reject(ex);
-          });
-          f.once('end', () => {
-            console.log('Done fetching all messages!');
-            imap.end();
-          });
         });
-      });
     });
 
-    imap.once('error', err => {
-      console.log(err);
+    imap.once('error', (err) => {
+    console.error(err);
     });
 
     imap.once('end', () => {
-      console.log('Connection ended');
+    console.log('Connection ended');
     });
 
+    // Connect to the IMAP server
     imap.connect();
   } catch (ex) {
     console.log('an error occurred');
+    console.error(ex);
   }
 };
+
+
+
+
+
+
 
 const main = async () => {
     // Wait until client connects and authorizes
@@ -179,6 +189,29 @@ const main = async () => {
     await client.logout();
 };
 
+
+
+
+
+
+
+//Stringify handles some characters that will cause erroes when passing to a reuest JSON object to string
+async function stringify(obj) {
+  let cache = [];
+  let str = await JSON.stringify(obj, function(key, value) {
+    if (typeof value === "object" && value !== null) {
+      if (cache.indexOf(value) !== -1) {
+        // Circular reference found, discard key
+        return;
+      }
+      // Store value in our collection
+      cache.push(value);
+    }
+    return value;
+  });
+  cache = null; // reset the cache
+  return str;
+}
 
 // simpleParser(stream, async (err, parsed) => {
 //                 // const {from, subject, textAsHtml, text} = parsed;
