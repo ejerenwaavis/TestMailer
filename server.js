@@ -113,9 +113,14 @@ app.route(APP_DIRECTORY + "/")
     let body = await main().catch(err => {
         console.error("\n\nErrors:");
         console.error(err)
+        res.send("Report Processing Failed");
     });
-    // console.error(body);
-    res.send("body");
+    console.error(body);
+    if(body){
+      res.send(body);
+    }else{
+      res.send(body);
+    }
   })
 
 
@@ -125,7 +130,6 @@ app.route(APP_DIRECTORY + "/")
 app.listen(process.env.PORT || 3055, function () {
     console.error(new Date().toLocaleString() + " >> Test Node Mailer running on Port " + ((process.env.PORT) ? process.env.PORT : 3055) + "\n");
     cacheBrands();
-    main();
 });
 
 
@@ -165,7 +169,12 @@ async function extractCsvAttachments(data) {
       }
     }
     reportDoc = {_id:today, date:today, drivers:drivers};
-    await saveReport(reportDoc);
+    let status = await saveReport(reportDoc);
+    if (status){
+      return true;
+    }else{
+      return false;
+    }
 }
 
 async function saveReport(reportDoc){
@@ -202,11 +211,14 @@ async function saveReport(reportDoc){
             let insertResult = await insertNewStops(report._id, driver.driverNumber, newStops);
             if(insertResult.successfull){
               console.log("Insert Succesfull");
+              return true;
             }else{
               console.log("Insert Failed");
+              return false;
             }
           }else{
             console.log("no new stops  ");
+            return true;
           }
         }
       }
@@ -221,9 +233,10 @@ async function saveReport(reportDoc){
         console.errpr(err);
         console.errpr(savedDoc);
         console.log("Done Saving");
+        return true;
       })
       .catch(err => {
-
+        return false;
       })
     }
 }
@@ -465,7 +478,8 @@ const main = async () => {
                 console.log('extraction and upload completed');
             }
         }else{
-            console.error("No New Data for Today");
+          console.error("No New Data for Today");
+          return ({successfull: true, msg: 'No New Data for Today'});
         }
     } finally {
         // Make sure lock is released, otherwise next `getMailboxLock()` never returns
