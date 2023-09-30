@@ -6,19 +6,82 @@ if (!SERVER){
 const express = require("express");
 const app = express();
 const fs = require("fs");
+const { promisify } = require('util');
 const ejs = require("ejs");
 const papa = require("papaparse");
 const bodyParser = require("body-parser")
 const Excel = require('exceljs');
 const formidable = require('formidable');
+const mongoose = require("mongoose");
 
-const APP_DIRECTORY = !(SERVER) ? "" : ((process.env.APP_DIRECTORY) ? (process.env.APP_DIRECTORY) : "");
+const APP_DIRECTORY = !(SERVER) ? "" : ((process.env.APP_DIRECTORY) ? (process.env.APP_DIRECTORY) : "" );
 const EMAILUSER = process.env.EMAILUSER;
 const EMAILPASS = process.env.EMAILPASS;
+const TEMP_FILEPATH = (process.env.TEMP_FILEPATH ? process.env.TEMP_FILEPATH : 'tmp/');
+const tempFilePath = TEMP_FILEPATH;
+const REPORTS_DB = process.env.REPORTS_DB;
+const MONGOURI2 = process.env.MONGOURI2;
 
+const MONGOPASSWORD = process.env.MONGOPASSWORD;
+const MONGOUSER = process.env.MONGOUSER;
+
+const MONGOTCS_PASS = process.env.MONGOTCS_PASS;
+const MONGOTCS_USER = process.env.MONGOTCS_USER;
+
+
+
+// Mongoose Report DB Connection Setup
+const reportDB = "mongodb+srv://" + MONGOTCS_USER + ":" + MONGOTCS_PASS + REPORTS_DB;
+const reportConn = mongoose.createConnection(reportDB, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+});
+
+
+const reportSchema = new mongoose.Schema({
+    _id: Date,
+    date: {type:Date, default: new Date()},
+    drivers:[{
+                driverNumber: Number, 
+                manifest:[{
+                        brand: String,
+                        barcode: String,
+                        status: {type:{}, default:null},
+                        name: String,
+                        street: String,
+                        city: String,
+                        state: String,
+                        country: String,
+                }]
+            }]
+});
+const Report = reportConn.model("Report", reportSchema);
+
+
+var allBrands;
+
+
+
+
+// Mongoose Brands DB Connection Setup
+const brandDB = "mongodb+srv://" + MONGOUSER + ":" + MONGOPASSWORD + MONGOURI2;
+
+const brandConn = mongoose.createConnection(brandDB, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+});
+
+
+const brandSchema = new mongoose.Schema({
+  _id: String,
+  trackingPrefixes: [String], //array of variants of the tracking prefixes
+});
+const Brand = brandConn.model("Brand", brandSchema);
+
+
+var allBrands;
 
 /** Email Config */
-const Imap = require('imap');
 const { ImapFlow } = require('imapflow');
 const {simpleParser} = require('mailparser');
 const client = new ImapFlow({
@@ -31,13 +94,9 @@ const client = new ImapFlow({
     }
 });
 
-const imapConfig = {
-  user: EMAILUSER,
-  password: EMAILPASS,
-  host: 'triumphcourier.com', // IMAP server hostname
-  port: 993, // IMAP server port (usually 993 for secure SSL/TLS)
-  tls: true, // Use SSL/TLS
-};
+
+
+
 
 app.set("view engine", "ejs");
 app.use(bodyParser.urlencoded({
@@ -51,12 +110,12 @@ app.route(APP_DIRECTORY + "/")
   .get(async function (req, res) {
     console.error(new Date().toLocaleString() + " >> Request Object: ");
     // let strReq = await stringify(req);
-    let body = await getEmails().catch(err => {
+    let body = await main().catch(err => {
         console.error("\n\nErrors:");
         console.error(err)
     });
-    console.error(body);
-    res.send(body);
+    // console.error(body);
+    res.send("body");
   })
 
 
@@ -65,6 +124,8 @@ app.route(APP_DIRECTORY + "/")
 
 app.listen(process.env.PORT || 3055, function () {
     console.error(new Date().toLocaleString() + " >> Test Node Mailer running on Port " + ((process.env.PORT) ? process.env.PORT : 3055) + "\n");
+    cacheBrands();
+    main();
 });
 
 
@@ -73,71 +134,287 @@ app.listen(process.env.PORT || 3055, function () {
 
 
 
-function openInbox(cb) {
-  imap.openBox('INBOX', true, cb);
+
+
+async function extractCsvAttachments(data) {
+    let emails = data.todayEmails;
+    let errors = data.errors;
+    let today = new Date();
+    today.setHours(0,0,0,0);
+    drivers = [];
+    
+    // console.log('Email Count:'+ emails.length);
+    // console.log(errors);
+    for await (const email of emails) {
+      // Check if the attachment is a CSV file
+      // console.log("\n*** ParsedEmail ***");
+      // console.log(email.parsedEmail.attachments[0]);
+      let attachment = email.parsedEmail.attachments[0];
+      if (attachment.contentType === 'text/csv' || attachment.contentType === 'text/comma-separated-values') {
+        const fileName = attachment.filename;
+        const driverNumber = fileName.split('.')[0].split('-')[0]; 
+        const fileContent = attachment.content.toString('utf-8');
+        
+        // Pass the file name and content to your processing function here
+          let manifest = await processCsvAttachment(fileContent);
+          drivers.push({driverNumber:driverNumber, manifest:manifest})
+          // return true;
+      }else{
+          errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incom[atible FileType"});
+          // console.error(email.envelope.from[0].address + " sent an incompatible filetype: " + fileName + " '"+attachment.contentType+"' ");
+      }
+    }
+    reportDoc = {_id:today, date:today, drivers:drivers};
+    await saveReport(reportDoc);
 }
 
-const getEmails = async () => {
-  try {
-    // Create an IMAP instance
-    const imap = await new Imap(imapConfig);
-    imap.once('ready', () => {
-        openInbox((err, box) => {
-            if (err) throw err;
-            imap.search(['UNSEEN'], (err, results) => {
-                if (err) throw err;
-                const fetch = imap.fetch(results, { bodies: [''], markSeen: true });
-                fetch.on('message', (msg, seqno) => {
-                    msg.on('body', (stream, info) => {
-                        simpleParser(stream, (err, parsed) => {
-                            if (err) throw err;
+async function saveReport(reportDoc){
+    let report = new Report(reportDoc);
+    reportExists = await reportDocExists(report);
+    // console.log(reportExists);
+    if(reportExists){
+      // itereate though the report and check for drivers that dont exists
+      let drivers = report.drivers;
+      for await(const driver of drivers){
+        driverExists = await driverDocExists(report._id, driver);
+        // if drivers don't exists, insert the new driver object
+        if(!driverExists){
+          //insert new driver document
+          result = await insertDriverDoc(report._id, driver);
+          if(result.successfull){
+            console.error(result.doc);
+          }else{
+            console.error(result.msg);
+          }
+        }else{
+          let newStops = [];
+          // if driver already exists, iterate through manifest and check for barcodes that dont exists 
+          stops = driver.manifest;
+          // console.log(stops);
+          for await(const stop of stops){
+            barcode = stop.barcode
+            result = await driverHasPackage(report._id, driver.driverNumber, barcode); // returns new barcodes that dont exist in driver's manifest
+            if(!result){
+              newStops.push(stop)
+            }
+          }
+          if(newStops.length>0){
+            let insertResult = await insertNewStops(report._id, driver.driverNumber, newStops);
+            if(insertResult.successfull){
+              console.log("Insert Succesfull");
+            }else{
+              console.log("Insert Failed");
+            }
+          }else{
+            console.log("no new stops  ");
+          }
+        }
+      }
 
-                            const attachments = parsed.attachments;
-                            if (attachments.length > 0) {
-                            attachments.forEach((attachment) => {
-                                if (attachment.contentType === 'text/csv') {
-                                const fileName = attachment.filename;
-                                const fileContent = attachment.content.toString();
+      // if barcode/stop does not exists upsert into driverDoc, (do a global search if the barcode exists under a diff. driver)
+      
+      console.log("Aready Exists");
+    }else{
+      console.log("Does NOT Exists - Saving new report Document");
+      report.save()
+      .then((err,savedDoc) => {
+        console.errpr(err);
+        console.errpr(savedDoc);
+        console.log("Done Saving");
+      })
+      .catch(err => {
 
-                                // Pass fileName and fileContent to your function here
-                                console.log('File Name:', fileName);
-                                console.log('File Content:', fileContent);
+      })
+    }
+}
 
-                                // You can also save the CSV file to disk if needed
-                                // fs.writeFileSync(fileName, fileContent);
-                                }
-                            });
-                            }
-                        });
-                    });
-                });
+async function insertDriverDoc(reportID, driver){
+  Report.findOneAndUpdate(
+    { _id: reportID },
+    { $push: { drivers: driver } },
+    { new: true }, // To return the updated document
+    (err, updatedDocument) => {
+      if (err) {
+        // console.error(err);
+        return {successfull:false, doc:null, msg:err.message}
+      } else {
+        // console.log('Updated document:', updatedDocument);
+        return {successfull:true, doc:updatedDocument, msg:err.message}
+      }
+      // mongoose.connection.close(); // Close the Mongoose connection when done
+    }
+  );
+}
 
-                fetch.once('end', () => {
-                    imap.end();
-                });
-            });
-        });
-    });
+async function insertNewStops(reportID, driverNumber, newStops){
 
-    imap.once('error', (err) => {
-    console.error(err);
-    });
+  const complexCriteria = {
+      _id: reportID,  
+      'drivers': {
+        $elemMatch: { driverNumber: driverNumber},
+      },
+  };
 
-    imap.once('end', () => {
-    console.log('Connection ended');
-    });
+  let updateResult = await Report.findOneAndUpdate(
+    complexCriteria,
+    { $push: { 'drivers.manifest': { $each: newStops } }  },
+    { new: true });
+    
+    // To return the updated document
+    console.log(updateResult);
+    
+    // function (err, updatedDocument) => {
+    //   if (err) {
+    //     console.error(err);
+    //     return {successfull:false, doc:null, msg:err.message}
+    //   } else {
+    //     console.log('Updated document:', updatedDocument);
+    //     return {successfull:true, doc:updatedDocument, msg:err.message}
+    //   }
+    //   // mongoose.connection.close(); // Close the Mongoose connection when done
+    // }
+  
+}
 
-    // Connect to the IMAP server
-    imap.connect();
-  } catch (ex) {
-    console.log('an error occurred');
-    console.error(ex);
-  }
+
+async function reportDocExists(report){
+  exist = await Report.exists({_id:report._id});
+  return exist;
 };
 
 
+async function driverDocExists(reportID, driver){
+  exist = await Report.find({_id: reportID, drivers: { $elemMatch: { driverNumber: driver.driverNumber} }});
+  return exist;
+};
 
+async function driverHasPackage(reportID, driverNumber, barcode){
+  report = await Report.findOne({_id: reportID, drivers: { $elemMatch: { driverNumber: driverNumber} }});
+  driver = await report.drivers.find((d) => d.driverNumber === driverNumber);
+  // await console.log(driver);
+  onlineManifest = driver.manifest;
+  // console.log(onlineManifest);
 
+  let exist = await onlineManifest.find((e) => e.barcode === barcode);
+  // console.log("Filter Process Is done");
+  // console.log(exist);
+  
+  if(exist){
+    return true;
+  }else{
+    return false;
+  }
+  
+  // for await (const stop of manifest){
+  //   console.log(stop.barcode);
+  //   if(stop.barcode === barcode){
+  //     return true;
+  //   }else{
+  //     return false;
+  //   }
+  // }
+  // console.log("Jusr finished forloop");
+  // return exist;
+  // exist = await Report.find({_id: reportID, manifest: { $elemMatch: { barcode: barcode}}  });
+};
+
+// Replace this function with your own logic to process CSV files
+async function processCsvAttachment(fileContent) {
+    //   console.log(`Found CSV attachment: ${fileName}`);
+    let parsedJSON = papa.parse(fileContent);
+    let arrayOfAddress = [];
+    let errors = [];
+    let totalRecords = 0;
+
+    for (let i = 1; i < parsedJSON.data.length; i++) {
+          totalRecords++;
+          let jsonAddress = {};
+          jsonAddress.Barcode = parsedJSON.data[i][0];
+          let brand =  allBrands.filter( (foundBrand) => { return (foundBrand.trackingPrefixes.includes(jsonAddress.Barcode.substring(0,7))) })
+          let brandName = (brand === undefined || brand.length == 0)? "## Unregistered Brand ##" : brand[0]._id;
+          // console.log("*****");
+          // console.log(options);
+          // console.log(parsedJSON.data[i][1]);
+          // console.log("*****");
+            if (jsonAddress.Barcode) {
+              //   if (parsedJSON.data[i][1] === options.loaded || parsedJSON.data[i][1] === options.attempted || parsedJSON.data[i][1] === options.delivered) {
+            // jsonAddress.lastScan = parsedJSON.data[i][1];
+                tempSplitAddress = (parsedJSON.data[i][3] + "").split(".");
+                let splitAddress;
+                if (tempSplitAddress.includes(" US")) {
+                  splitAddress = tempSplitAddress;
+                } else {
+                  tempSplitAddress.push(" US");
+                  // console.log(tempSplitAddress);
+                  splitAddress = tempSplitAddress;
+                }
+                // console.log(splitAddress.includes(" US"));
+                // console.log(splitAddress);
+                // if (options.extractFor === "roadWarrior" || options.extractFor === "route4me") {
+                    if (splitAddress.length > 5) {
+                        let country = (splitAddress[5] + "").trim();
+                        let countryProcessed = "";
+                        let name = ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A";
+                        let street = (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim();
+                        let city = (splitAddress[3] + "").trim();
+                        try{
+                            if (country != "UNDEFINED") {
+                                countryProcessed = (country.length > 3) ? country.split(" ")[0][0] + country.split(" ")[1][0] : country;
+                    
+                                // console.log(JSON.stringify(address));
+                            }
+                        }catch(error){
+                            // console.log("errors where found at " + (i + 3));
+                            errors.push({name:name, line: (i+1), fullAddress: street + " " +city});
+                            // console.log(populateErrors);
+                        }
+
+                        jsonAddress = {
+                        brand: brandName,
+                        barcode: parsedJSON.data[i][0],
+                        lastScan: parsedJSON.data[i][1],
+                        name: name,//((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
+                        // apt:(splitAddress[1]+"").trim(),
+                        street: street,// (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim(),
+                        city: city, //(splitAddress[3] + "").trim(),
+                        state: (splitAddress[4] + "").trim(),
+                        country: countryProcessed,
+                    
+                        }
+                    } else {
+                        jsonAddress = {
+                        brand: brandName,
+                        barcode: parsedJSON.data[i][0],
+                        lastScan: parsedJSON.data[i][1],
+                        name: ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
+                        street: (splitAddress[1] + "").trim(),
+                        city: (splitAddress[2] + "").trim(),
+                        state: (splitAddress[3] + "").trim(),
+                        country: (splitAddress[4] + "").trim(),
+                        }
+                    }
+                // }
+                // console.log(jsonAddress);
+                // if (jsonAddress.Name != "undefined" && jsonAddress.Name != " Unknown name") {
+                  arrayOfAddress.push(jsonAddress);
+                // }
+
+                // console.log("Objects " + parsedJSON.data.length);
+                
+              // }
+            
+              
+            // });  // end of brand finding
+        //   } else {
+        //     // console.log("already attempted/delivered");
+          }
+          
+        }
+        // console.error(arrayOfAddress);
+        // console.error(arrayOfAddress.length);
+        // console.error(arrayOfAddress);
+        return arrayOfAddress;
+}
 
 
 
@@ -148,38 +425,48 @@ const main = async () => {
     // Select and lock a mailbox. Throws if mailbox does not exist
     let lock = await client.getMailboxLock('INBOX');
     try {
-        // fetch latest message source
-        // client.mailbox includes information about currently selected mailbox
-        // "exists" value is also the largest sequence number available in the mailbox
-        // let message = await client.fetchOne(client.mailbox.exists, { source: true });
-        // console.error("\n\n **** MSG SOURCE !");
-        // console.log(message.source);
-        console.error("***  MESAGES \n\n");
+        const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
+        let todaysEmails = [];
+        let errors = [];
+        for await (let email of emails) {
+            let isTodayMail = await isToday(new Date(email.envelope.date));
+            if(isTodayMail){
+                email.parsedEmail = await simpleParser(email.source);
+                let attachment = email.parsedEmail.attachments[0]; 
+                let fileName = attachment.filename;
+                let todaysManifest = await isTodaysManifest(fileName);
+                let validFileName = await isValidFileName(fileName);
+                if(validFileName){
+                    if(todaysManifest){
+                        todaysEmails.push(email);
+                    }else{
+                        errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Outdated Manifest"});
+                        // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' ");
+                    }
+                }else{
+                        errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Mutilated FileName"});
+                        // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' 
+                }
+            }
+            /*
+                console.log(''+email.uid + ' : ' );
+                // console.log(email.envelope);
+                // console.log(email.flags);
+                // Use the mailparser module to parse the email
+                // console.log('** Content **');
+                // console.log(parsedEmail.attachments);
+                // console.log('** End Content **\n');
+            */
 
-
-        /* */
-
-        // list subjects for all messages
-        // uid value is always included in FETCH response, envelope strings are in unicode.
-        console.error(" \n\n\n**** BEGIN MESSAGES !");
-        for await (let message of client.fetch('5', { source:true })) {
-            // console.log(''+message.uid + ' : ' + message.envelope.subject );
-            // console.log((message));
-            console.log('*\nEMail');
-            simpleParser(message.source, async (err, parsed) => {
-                // const {from, subject, textAsHtml, text} = parsed;
-                console.log(parsed.html);
-                return parsed.html;
-                /* Make API call to save the data
-                   Save the retrieved data into a database.
-                   E.t.c
-                */
-                // return parsed;
-              });
-            console.log('*************\n\n\n');
-            // console.log(`${message.uid}: ${message.envelope.subject}`);
         }
-        console.error("*** END MSG  ! \n\n");
+        if (todaysEmails.length > 0){
+            let status = await extractCsvAttachments({todayEmails:todaysEmails,errors:errors});
+            if(status){
+                console.log('extraction and upload completed');
+            }
+        }else{
+            console.error("No New Data for Today");
+        }
     } finally {
         // Make sure lock is released, otherwise next `getMailboxLock()` never returns
         lock.release();
@@ -188,12 +475,6 @@ const main = async () => {
     // log out and close connection
     await client.logout();
 };
-
-
-
-
-
-
 
 //Stringify handles some characters that will cause erroes when passing to a reuest JSON object to string
 async function stringify(obj) {
@@ -213,12 +494,75 @@ async function stringify(obj) {
   return str;
 }
 
-// simpleParser(stream, async (err, parsed) => {
-//                 // const {from, subject, textAsHtml, text} = parsed;
-//                 console.log(parsed);
-//                 /* Make API call to save the data
-//                    Save the retrieved data into a database.
-//                    E.t.c
-//                 */
-//                 // return parsed;
-//               });
+async function isTodaysManifest(fileName){
+    let fileNameSplit = fileName.split('.')[0].split('-');
+    let manifestDate = new Date(fileNameSplit[2],(fileNameSplit[3]) - 1, fileNameSplit[4]);
+    return isToday(manifestDate);
+}
+
+async function isValidFileName(fileName){
+    let fileNameSplit = fileName.split('.')[0].split('-');
+    return fileNameSplit.length > 3;
+}
+
+
+async function isToday(dateToCheck) {
+  const currentDate = new Date();
+  
+  // Set both dates to midnight to compare only the date portion
+  currentDate.setHours(0, 0, 0, 0);
+  dateToCheck.setHours(0, 0, 0, 0);
+  return dateToCheck.getTime() === currentDate.getTime();
+}
+
+async function cacheBrands(){
+    allBrands = await Brand.find({},"-__v");
+    stringBrands = JSON.stringify(allBrands);
+    // reCon = JSON.parse(stringRoutes);
+    // console.log(reCon);
+    fs.mkdir(tempFilePath, (err) => {
+        if (err) {
+        // console.log(err.message);
+        // console.log(err.code);
+        if (err.code === "EEXIST") {
+            if(SERVER) 
+            console.error("Directory ALREADY Exists.");
+            fs.writeFile(tempFilePath + 'brands.txt', stringBrands, err => {
+                if (err) {
+                console.error(err);
+                }else{
+                if(SERVER) 
+                console.error("Brands written to file");
+                }
+            }); 
+        } else {
+            console.error(err.code);;
+            console.error(err);;
+        }
+        }else{
+        fs.writeFile(tempFilePath + 'brands.txt', stringBrands, err => {
+            if (err) {
+            console.error(err);
+            }else{
+            console.log("Brands written to file");
+            }
+        }); 
+        console.log("'/tmp' Directory was created.");
+        }
+    });
+}
+
+
+async function clearTempFolder(){
+  fs.readdir(tempFilePath, (err, files) => {
+  if (err) throw err;
+
+  for (const file of files) {
+    if(file.startsWith("bra")){
+      fs.unlink(path.join(tempFilePath, file), (err) => {
+        if (err) throw err; 
+      });
+    }
+  }
+});
+}
