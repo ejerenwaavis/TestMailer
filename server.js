@@ -106,25 +106,22 @@ app.use(express.json());
 
 /* Routing Logic */
 
-app.route(APP_DIRECTORY + "/")
+app.route(APP_DIRECTORY + "/extract")
   .get(async function (req, res) {
     console.error(new Date().toLocaleString() + " >> Request Object: ");
     // let strReq = await stringify(req);
-    let body = await main().catch(err => {
-        console.error("\n\nErrors:");
+    let response = await main().catch(err => {
+        // console.error("\n\nErrors:");
         console.error(err)
-        res.send("Report Processing Failed");
+        res.send({successfull:false, error:err, msg:"Report Processing Failed"});
     });
-    console.error(body);
-    if(body){
-      res.send(body);
+    // console.error(body);
+    if(response){
+      res.send(response);
     }else{
-      res.send(body);
+      res.send({successfull:false, message:"External Error"});
     }
   })
-
-
-
 
 
 app.listen(process.env.PORT || 3055, function () {
@@ -135,202 +132,6 @@ app.listen(process.env.PORT || 3055, function () {
 
 
 /** Helper Funcrions */
-
-
-
-
-
-async function extractCsvAttachments(data) {
-    let emails = data.todayEmails;
-    let errors = data.errors;
-    let today = new Date();
-    today.setHours(0,0,0,0);
-    drivers = [];
-    
-    // console.log('Email Count:'+ emails.length);
-    // console.log(errors);
-    for await (const email of emails) {
-      // Check if the attachment is a CSV file
-      // console.log("\n*** ParsedEmail ***");
-      // console.log(email.parsedEmail.attachments[0]);
-      let attachment = email.parsedEmail.attachments[0];
-      if (attachment.contentType === 'text/csv' || attachment.contentType === 'text/comma-separated-values') {
-        const fileName = attachment.filename;
-        const driverNumber = fileName.split('.')[0].split('-')[0]; 
-        const fileContent = attachment.content.toString('utf-8');
-        
-        // Pass the file name and content to your processing function here
-          let manifest = await processCsvAttachment(fileContent);
-          drivers.push({driverNumber:driverNumber, manifest:manifest})
-          // return true;
-      }else{
-          errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incom[atible FileType"});
-          // console.error(email.envelope.from[0].address + " sent an incompatible filetype: " + fileName + " '"+attachment.contentType+"' ");
-      }
-    }
-    reportDoc = {_id:today, date:today, drivers:drivers};
-    let status = await saveReport(reportDoc);
-    if (status){
-      return true;
-    }else{
-      return false;
-    }
-}
-
-async function saveReport(reportDoc){
-    let report = new Report(reportDoc);
-    reportExists = await reportDocExists(report);
-    // console.log(reportExists);
-    if(reportExists){
-      // itereate though the report and check for drivers that dont exists
-      let drivers = report.drivers;
-      for await(const driver of drivers){
-        driverExists = await driverDocExists(report._id, driver);
-        // if drivers don't exists, insert the new driver object
-        if(!driverExists){
-          //insert new driver document
-          result = await insertDriverDoc(report._id, driver);
-          if(result.successfull){
-            console.error(result.doc);
-          }else{
-            console.error(result.msg);
-          }
-        }else{
-          let newStops = [];
-          // if driver already exists, iterate through manifest and check for barcodes that dont exists 
-          stops = driver.manifest;
-          // console.log(stops);
-          for await(const stop of stops){
-            barcode = stop.barcode
-            result = await driverHasPackage(report._id, driver.driverNumber, barcode); // returns new barcodes that dont exist in driver's manifest
-            if(!result){
-              newStops.push(stop)
-            }
-          }
-          if(newStops.length>0){
-            let insertResult = await insertNewStops(report._id, driver.driverNumber, newStops);
-            if(insertResult.successfull){
-              console.log("Insert Succesfull");
-              return true;
-            }else{
-              console.log("Insert Failed");
-              return false;
-            }
-          }else{
-            console.log("no new stops  ");
-            return true;
-          }
-        }
-      }
-
-      // if barcode/stop does not exists upsert into driverDoc, (do a global search if the barcode exists under a diff. driver)
-      
-      console.log("Aready Exists");
-    }else{
-      console.log("Does NOT Exists - Saving new report Document");
-      report.save()
-      .then((err,savedDoc) => {
-        console.errpr(err);
-        console.errpr(savedDoc);
-        console.log("Done Saving");
-        return true;
-      })
-      .catch(err => {
-        return false;
-      })
-    }
-}
-
-async function insertDriverDoc(reportID, driver){
-  Report.findOneAndUpdate(
-    { _id: reportID },
-    { $push: { drivers: driver } },
-    { new: true }, // To return the updated document
-    (err, updatedDocument) => {
-      if (err) {
-        // console.error(err);
-        return {successfull:false, doc:null, msg:err.message}
-      } else {
-        // console.log('Updated document:', updatedDocument);
-        return {successfull:true, doc:updatedDocument, msg:err.message}
-      }
-      // mongoose.connection.close(); // Close the Mongoose connection when done
-    }
-  );
-}
-
-async function insertNewStops(reportID, driverNumber, newStops){
-
-  const complexCriteria = {
-      _id: reportID,  
-      'drivers': {
-        $elemMatch: { driverNumber: driverNumber},
-      },
-  };
-
-  let updateResult = await Report.findOneAndUpdate(
-    complexCriteria,
-    { $push: { 'drivers.manifest': { $each: newStops } }  },
-    { new: true });
-    
-    // To return the updated document
-    console.log(updateResult);
-    
-    // function (err, updatedDocument) => {
-    //   if (err) {
-    //     console.error(err);
-    //     return {successfull:false, doc:null, msg:err.message}
-    //   } else {
-    //     console.log('Updated document:', updatedDocument);
-    //     return {successfull:true, doc:updatedDocument, msg:err.message}
-    //   }
-    //   // mongoose.connection.close(); // Close the Mongoose connection when done
-    // }
-  
-}
-
-
-async function reportDocExists(report){
-  exist = await Report.exists({_id:report._id});
-  return exist;
-};
-
-
-async function driverDocExists(reportID, driver){
-  exist = await Report.find({_id: reportID, drivers: { $elemMatch: { driverNumber: driver.driverNumber} }});
-  return exist;
-};
-
-async function driverHasPackage(reportID, driverNumber, barcode){
-  report = await Report.findOne({_id: reportID, drivers: { $elemMatch: { driverNumber: driverNumber} }});
-  driver = await report.drivers.find((d) => d.driverNumber === driverNumber);
-  // await console.log(driver);
-  onlineManifest = driver.manifest;
-  // console.log(onlineManifest);
-
-  let exist = await onlineManifest.find((e) => e.barcode === barcode);
-  // console.log("Filter Process Is done");
-  // console.log(exist);
-  
-  if(exist){
-    return true;
-  }else{
-    return false;
-  }
-  
-  // for await (const stop of manifest){
-  //   console.log(stop.barcode);
-  //   if(stop.barcode === barcode){
-  //     return true;
-  //   }else{
-  //     return false;
-  //   }
-  // }
-  // console.log("Jusr finished forloop");
-  // return exist;
-  // exist = await Report.find({_id: reportID, manifest: { $elemMatch: { barcode: barcode}}  });
-};
-
 // Replace this function with your own logic to process CSV files
 async function processCsvAttachment(fileContent) {
     //   console.log(`Found CSV attachment: ${fileName}`);
@@ -428,13 +229,258 @@ async function processCsvAttachment(fileContent) {
         // console.error(arrayOfAddress);
         return arrayOfAddress;
 }
+async function extractCsvAttachments(data) {
+    let emails = data.todayEmails;
+    let errors = data.errors;
+    let today = new Date();
+    today.setHours(0,0,0,0);
+    drivers = [];
+    
+    // console.log('Email Count:'+ emails.length);
+    // console.log(errors);
+    for await (const email of emails) {
+      // Check if the attachment is a CSV file
+      // console.log("\n*** ParsedEmail ***");
+      // console.log(email.parsedEmail.attachments[0]);
+      let attachment = email.parsedEmail.attachments[0];
+      if (attachment.contentType === 'text/csv' || attachment.contentType === 'text/comma-separated-values') {
+        const fileName = attachment.filename;
+        const driverNumber = fileName.split('.')[0].split('-')[0]; 
+        const fileContent = attachment.content.toString('utf-8');
+        
+        // Pass the file name and content to your processing function here
+          let manifest = await processCsvAttachment(fileContent);
+          let driverSearch = drivers.filter((d) => d.driverNumber === driverNumber );
+          if(driverSearch.length > 0){
+            // console.log("Duplicate Driver Found");
+            // console.log(driverSearch);
+            let existingManifest = driverSearch[0].manifest;
+            let mergedManifests = await mergeManifest(existingManifest, manifest);
+            if(mergedManifests){
+              let driverIndex = drivers.findIndex(obj => obj.driverNumber === driverNumber);
+              if(driverIndex !== -1){
+                // console.log(driverIndex);
+                drivers[driverIndex].manifest = mergedManifests;
+              }
+            }else{
+              errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Failed to Merge Manifest of Driver: "+driverNumber+""});
+            }
+          }else{
+            drivers.push({driverNumber:driverNumber, manifest:manifest})
+          }
+          // return true;
+      }else{
+          errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incom[atible FileType"});
+          // console.error(email.envelope.from[0].address + " sent an incompatible filetype: " + fileName + " '"+attachment.contentType+"' ");
+      }
+    }
+    reportDoc = {_id:today, date:today, drivers:drivers};
+    let status = await saveReport(reportDoc);
+    if (status){
+      return {successfull:true, message:"Manfest Extraction Completed", errors:errors, driverCount:drivers.length};
+    }else{
+      return {successfull:false, message:"Failed to Extract/Save Report", errors:errors, driverCount:drivers.length};
+    }
+}
+
+async function saveReport(reportDoc){
+    let report = new Report(reportDoc);
+    reportExists = await reportDocExists(report);
+    // console.log(reportExists);
+    if(reportExists){
+      let result = await deleteReport(report);
+      if(result.deletedCount>0){
+        let status = await report.save();
+        // console.log(status);
+        if(status){
+          return true;
+        }else{
+          return false;
+        }
+      }else{
+        return false;
+      }
+
+      // itereate though the report and check for drivers that dont exists
+      /*
+        let drivers = report.drivers;
+        for await(const driver of drivers){
+          driverExists = await driverDocExists(report._id, driver);
+          // if drivers don't exists, insert the new driver object
+          if(!driverExists){
+            //insert new driver document
+            result = await insertDriverDoc(report._id, driver);
+            if(result.successfull){
+              console.error(result.doc);
+            }else{
+              console.error(result.msg);
+            }
+          }else{
+            let newStops = [];
+            // if driver already exists, iterate through manifest and check for barcodes that dont exists 
+            stops = driver.manifest;
+            // console.log(stops);
+            for await(const stop of stops){
+              barcode = stop.barcode
+              result = await driverHasPackage(report._id, driver.driverNumber, barcode); // returns new barcodes that dont exist in driver's manifest
+              if(!result){
+                newStops.push(stop)
+              }
+            }
+            if(newStops.length>0){
+              let insertResult = await insertNewStops(report._id, driver.driverNumber, newStops);
+              if(insertResult.successfull){
+                console.log("Insert Succesfull");
+                return true;
+              }else{
+                console.log("Insert Failed");
+                return false;
+              }
+            }else{
+              console.log("no new stops  ");
+              return true;
+            }
+          }
+        }
+      */
+      // if barcode/stop does not exists upsert into driverDoc, (do a global search if the barcode exists under a diff. driver)
+      
+      console.log("Aready Exists");
+    }else{
+      console.log("Does NOT Exists - Saving new report Document");
+      let status = await report.save();
+      console.log(status);
+      if(status){
+        return true;
+      }else{
+        return false;
+      }
+      
+      // .then((err,savedDoc) => {
+      //   console.errpr(err);
+      //   console.errpr(savedDoc);
+      //   console.log("Done Saving");
+      //   return true;
+      // })
+      // .catch(err => {
+      //   return false;
+      // })
+    }
+}
+
+async function insertDriverDoc(reportID, driver){
+  Report.findOneAndUpdate(
+    { _id: reportID },
+    { $push: { drivers: driver } },
+    { new: true }, // To return the updated document
+    (err, updatedDocument) => {
+      if (err) {
+        // console.error(err);
+        return {successfull:false, doc:null, msg:err.message}
+      } else {
+        // console.log('Updated document:', updatedDocument);
+        return {successfull:true, doc:updatedDocument, msg:err.message}
+      }
+      // mongoose.connection.close(); // Close the Mongoose connection when done
+    }
+  );
+}
+
+async function insertNewStops(reportID, driverNumber, newStops){
+
+  const complexCriteria = {
+      _id: reportID,  
+      'drivers': {
+        $elemMatch: { driverNumber: driverNumber},
+      },
+  };
+
+  let updateResult = await Report.findOneAndUpdate(
+    complexCriteria,
+    { $push: { 'drivers.manifest': { $each: newStops } }  },
+    { new: true });
+    
+    // To return the updated document
+    console.log(updateResult);
+    
+    // function (err, updatedDocument) => {
+    //   if (err) {
+    //     console.error(err);
+    //     return {successfull:false, doc:null, msg:err.message}
+    //   } else {
+    //     console.log('Updated document:', updatedDocument);
+    //     return {successfull:true, doc:updatedDocument, msg:err.message}
+    //   }
+    //   // mongoose.connection.close(); // Close the Mongoose connection when done
+    // }
+  
+}
+
+async function deleteReport(report){
+  err = await Report.deleteOne({_id:report._id});
+  console.error("Deleting exisitng Report");
+  // console.error(err);
+  return err;
+}
+
+async function reportDocExists(report){
+  exist = await Report.exists({_id:report._id});
+  return exist;
+};
+
+async function driverDocExists(reportID, driver){
+  exist = await Report.find({_id: reportID, drivers: { $elemMatch: { driverNumber: driver.driverNumber} }});
+  return exist;
+};
+
+async function driverHasPackage(reportID, driverNumber, barcode){
+  report = await Report.findOne({_id: reportID, drivers: { $elemMatch: { driverNumber: driverNumber} }});
+  driver = await report.drivers.find((d) => d.driverNumber === driverNumber);
+  // await console.log(driver);
+  onlineManifest = driver.manifest;
+  // console.log(onlineManifest);
+
+  let exist = await onlineManifest.find((e) => e.barcode === barcode);
+  // console.log("Filter Process Is done");
+  // console.log(exist);
+  
+  if(exist){
+    return true;
+  }else{
+    return false;
+  }
+  
+  // for await (const stop of manifest){
+  //   console.log(stop.barcode);
+  //   if(stop.barcode === barcode){
+  //     return true;
+  //   }else{
+  //     return false;
+  //   }
+  // }
+  // console.log("Jusr finished forloop");
+  // return exist;
+  // exist = await Report.find({_id: reportID, manifest: { $elemMatch: { barcode: barcode}}  });
+};
+
+async function mergeManifest(oldManifest, manifest){
+  let finalManifest = oldManifest; 
+  for await(const stop of manifest){
+    let exists = finalManifest.some((s) => s.barcode === stop.barcode);
+    if(!exists){
+      // console.log("Barcode does not exist -- Addidng");
+      finalManifest.push(stop);
+    }
+  }
+  return finalManifest;
+}
 
 
 
 const main = async () => {
     // Wait until client connects and authorizes
     await client.connect();
-
+    console.error("connected to mail server");
     // Select and lock a mailbox. Throws if mailbox does not exist
     let lock = await client.getMailboxLock('INBOX');
     try {
@@ -461,21 +507,14 @@ const main = async () => {
                         // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' 
                 }
             }
-            /*
-                console.log(''+email.uid + ' : ' );
-                // console.log(email.envelope);
-                // console.log(email.flags);
-                // Use the mailparser module to parse the email
-                // console.log('** Content **');
-                // console.log(parsedEmail.attachments);
-                // console.log('** End Content **\n');
-            */
-
+           
         }
         if (todaysEmails.length > 0){
-            let status = await extractCsvAttachments({todayEmails:todaysEmails,errors:errors});
-            if(status){
+            console.error(new Date().toLocaleString() + " >> Manifest Extraction Started ...");
+            let result = await extractCsvAttachments({todayEmails:todaysEmails,errors:errors});
+            if(result.successfull){
                 console.log('extraction and upload completed');
+                return result
             }
         }else{
           console.error("No New Data for Today");
@@ -483,11 +522,12 @@ const main = async () => {
         }
     } finally {
         // Make sure lock is released, otherwise next `getMailboxLock()` never returns
+        console.error("FInishing and Exiting Mail Connection");
         lock.release();
-    }
-
-    // log out and close connection
-    await client.logout();
+        // log out and close connection
+        await client.logout();
+      }
+      
 };
 
 //Stringify handles some characters that will cause erroes when passing to a reuest JSON object to string
