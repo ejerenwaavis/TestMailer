@@ -110,17 +110,20 @@ app.route(APP_DIRECTORY + "/extract")
   .get(async function (req, res) {
     console.error(new Date().toLocaleString() + " >> Request Object: ");
     // let strReq = await stringify(req);
-    let response = await main().catch(err => {
+    try{
+      let response = await main();
+      if(response){
+        res.send(response);
+      }else{
+        res.send({successfull:false, message:"External Error"});
+      }
+    }catch(err){
         // console.error("\n\nErrors:");
-        console.error(err)
+        // console.error(err)
         res.send({successfull:false, error:err, msg:"Report Processing Failed"});
-    });
+      }
     // console.error(body);
-    if(response){
-      res.send(response);
-    }else{
-      res.send({successfull:false, message:"External Error"});
-    }
+    
   })
 
 
