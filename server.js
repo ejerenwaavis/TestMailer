@@ -510,7 +510,6 @@ const main = async () => {
                         // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' 
                 }
             }
-           
         }
         if (todaysEmails.length > 0){
             console.error(new Date().toLocaleString() + " >> Manifest Extraction Started ...");
