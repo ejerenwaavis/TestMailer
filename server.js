@@ -128,7 +128,7 @@ app.route(APP_DIRECTORY + "/extract")
 
 
 app.listen(process.env.PORT || 3055, function () {
-    console.error(new Date().toLocaleString() + " >> Test Node Mailer running on Port " + ((process.env.PORT) ? process.env.PORT : 3055) + "\n");
+    console.error( outputDate() +"Test Node Mailer running on Port " + ((process.env.PORT) ? process.env.PORT : 3055) + "\n");
     cacheBrands();
 });
 
@@ -482,11 +482,13 @@ async function mergeManifest(oldManifest, manifest){
 
 const main = async () => {
     // Wait until client connects and authorizes
-    await client.connect();
-    console.error("connected to mail server");
-    // Select and lock a mailbox. Throws if mailbox does not exist
-    let lock = await client.getMailboxLock('INBOX');
     try {
+      await client.connect();
+      // console.log(client.close);
+      // return(client);
+      console.error("connected to mail server");
+      // Select and lock a mailbox. Throws if mailbox does not exist
+      let lock = await client.getMailboxLock('INBOX');
         const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
         let todaysEmails = [];
         let errors = [];
@@ -520,14 +522,25 @@ const main = async () => {
             }
         }else{
           console.error("No New Data for Today");
+          // console.error("FInishing and Exiting Mail Connection");
           return ({successfull: true, msg: 'No New Data for Today'});
         }
-    } finally {
+    } catch(error){
+      console.error(outputDate() + "Caught an Error in 'MAIN' function");
+      console.error(error);
+  
+      return ({successfull: false, msg:'Encountered an Error', error:error});
+
+    }finally {
         // Make sure lock is released, otherwise next `getMailboxLock()` never returns
-        console.error("FInishing and Exiting Mail Connection");
-        lock.release();
-        // log out and close connection
-        await client.logout();
+        try{
+          lock.release();
+          // log out and close connection
+          await client.logout();
+        }catch(error){
+          console.error("Caught errors trying to close the connection");
+          // return ({successfull: false, msg:'Closing Error ', error:error})
+        }
       }
       
 };
@@ -621,4 +634,23 @@ async function clearTempFolder(){
     }
   }
 });
+}
+
+
+
+async function keepAlive(){
+  interval = 3600000;
+  count = 1;
+  console.error(outputDate()+"Keep Alive Service Initiated, [Interval: "+ interval/60000+" mins]");
+  startDate = new Date(2023,10,03);
+  while (startDate.getDate() < 5) {
+    console.log(outputDate() + "Keep Alive Ping: " + count++);
+    await new Promise( function(resolve,reject){
+      setTimeout(resolve, interval)//1hr
+    });
+  }
+}
+
+function outputDate() {
+  return (new Date().toLocaleString()) + " >> ";
 }
