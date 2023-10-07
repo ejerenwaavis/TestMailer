@@ -84,15 +84,7 @@ var allBrands;
 /** Email Config */
 const { ImapFlow } = require('imapflow');
 const {simpleParser} = require('mailparser');
-const client = new ImapFlow({
-    host: 'triumphcourier.com',
-    port: 993,
-    secure: true,
-    auth: {
-        user: EMAILUSER,
-        pass: EMAILPASS
-    }
-});
+ 
 
 
 app.set("view engine", "ejs");
@@ -480,6 +472,15 @@ async function mergeManifest(oldManifest, manifest){
 const main = async () => {
     // Wait until client connects and authorizes
     try {
+      client = new ImapFlow({
+          host: 'triumphcourier.com',
+          port: 993,
+          secure: true,
+          auth: {
+              user: EMAILUSER,
+              pass: EMAILPASS
+          }
+      });
       await client.connect();
       // console.log(client.close);
       // return(client);
