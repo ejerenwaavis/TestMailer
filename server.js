@@ -45,6 +45,7 @@ const reportSchema = new mongoose.Schema({
                 driverNumber: Number, 
                 manifest:[{
                         brand: String,
+                        lastScan: String,
                         barcode: String,
                         status: {type:{}, default:null},
                         name: String,
@@ -244,7 +245,7 @@ async function extractCsvAttachments(data) {
           let manifest = await processCsvAttachment(fileContent);
           let driverSearch = drivers.filter((d) => d.driverNumber === driverNumber );
           if(driverSearch.length > 0){
-            // console.log("Duplicate Driver Found");
+            console.log("Duplicate Driver Found at " + emails.indexOf(email));
             // console.log(driverSearch);
             let existingManifest = driverSearch[0].manifest;
             let mergedManifests = await mergeManifest(existingManifest, manifest);
@@ -458,10 +459,20 @@ async function driverHasPackage(reportID, driverNumber, barcode){
 async function mergeManifest(oldManifest, manifest){
   let finalManifest = oldManifest; 
   for await(const stop of manifest){
-    let exists = finalManifest.some((s) => s.barcode === stop.barcode);
-    if(!exists){
+    let existingStop = finalManifest.find((s) => s.barcode === stop.barcode);
+    let stopIndex  = finalManifest.indexOf(existingStop);
+    if(!existingStop){
       // console.log("Barcode does not exist -- Addidng");
       finalManifest.push(stop);
+    }else{
+      // Check if the element was found
+        // Manipulate the element (for example, multiply it by 2)
+        console.log("Last Scan Before manipulation:", existingStop.lastScan);
+        existingStop.lastScan = stop.lastScan;
+
+        // Update the array with the manipulated value
+        finalManifest[stopIndex] = existingStop;
+        console.log("Last Scan after manipulation:", existingStop.lastScan);
     }
   }
   return finalManifest;
@@ -482,17 +493,24 @@ const main = async () => {
           }
       });
       await client.connect();
-      // console.log(client.close);
-      // return(client);
+
+
+
+
+
       console.error("connected to mail server");
       // Select and lock a mailbox. Throws if mailbox does not exist
       let lock = await client.getMailboxLock('INBOX');
         const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
         let todaysEmails = [];
         let errors = [];
-        for await (let email of emails) {
+        console.error("Email Count: "+ emails.length);
+        
+        for await (const email of emails) {
             let isTodayMail = await isToday(new Date(email.envelope.date));
             if(isTodayMail){
+                console.error("Found Email: ");
+
                 email.parsedEmail = await simpleParser(email.source);
                 let attachment = email.parsedEmail.attachments[0]; 
                 let fileName = attachment.filename;
