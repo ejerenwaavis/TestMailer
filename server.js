@@ -98,7 +98,7 @@ app.use(express.json());
 
 app.route(APP_DIRECTORY + "/extract")
   .get(async function (req, res) {
-    console.error(new Date().toLocaleString() + " >> Request Object: ");
+    // console.error(new Date().toLocaleString() + " >> Request Object: ");
     // let strReq = await stringify(req);
     try{
       let response = await main();
@@ -502,7 +502,7 @@ const main = async () => {
       // Select and lock a mailbox. Throws if mailbox does not exist
       let lock = await client.getMailboxLock('INBOX');
         const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
-        console.error("----EMAILS FETCH BELOW---");
+        console.error(outputDate + "----EMAILS FETCH BELOW---");
         console.error(emails);
         console.error("----END OF EMAILS---");
         
@@ -534,7 +534,7 @@ const main = async () => {
             }
         }
         if (todaysEmails.length > 0){
-            console.error(new Date().toLocaleString() + " >> Manifest Extraction Started ...");
+            console.error(outputDate + " >> Manifest Extraction Started ...");
             let result = await extractCsvAttachments({todayEmails:todaysEmails,errors:errors});
             if(result.successfull){
                 console.log('extraction and upload completed');
