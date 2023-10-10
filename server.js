@@ -118,7 +118,7 @@ app.route(APP_DIRECTORY + "/extract")
 
 
 app.listen(process.env.PORT || 3055, function () {
-    console.error( outputDate() +"Test Node Mailer running on Port " + ((process.env.PORT) ? process.env.PORT : 3055) + "\n");
+    console.error( outputDate() + "Test Node Mailer running on Port " + ((process.env.PORT) ? process.env.PORT : 3055) + "\n");
     cacheBrands();
 });
 
@@ -229,8 +229,11 @@ async function extractCsvAttachments(data) {
     today.setHours(0,0,0,0);
     drivers = [];
     
-    // console.log('Email Count:'+ emails.length);
-    // console.log(errors);
+    console.error(outputDate() + "----EMAILS FROM EXTRACT CSV ATT. ---");
+    for await (const em of emails) {
+      console.error("Email Seq#: "+em.seq + ", From: "+ em.envelope.from[0].name + " | email: " + em.envelope.from[0].address);
+    };
+    console.error("----END OF EMAILS PRINT FROM EXTRACT CSV ATT. ---");
     for await (const email of emails) {
       // Check if the attachment is a CSV file
       // console.log("\n*** ParsedEmail ***");
@@ -245,7 +248,7 @@ async function extractCsvAttachments(data) {
           let manifest = await processCsvAttachment(fileContent);
           let driverSearch = drivers.filter((d) => d.driverNumber === driverNumber );
           if(driverSearch.length > 0){
-            console.log("Duplicate Driver Found at " + emails.indexOf(email));
+            console.error("Duplicate Driver Found at " + emails.indexOf(email) + " "+ driverSearch[0].driverNumber);
             // console.log(driverSearch);
             let existingManifest = driverSearch[0].manifest;
             let mergedManifests = await mergeManifest(existingManifest, manifest);
@@ -467,12 +470,12 @@ async function mergeManifest(oldManifest, manifest){
     }else{
       // Check if the element was found
         // Manipulate the element (for example, multiply it by 2)
-        console.log("Last Scan Before manipulation:", existingStop.lastScan);
+        console.error("Last Scan Before manipulation:", existingStop.lastScan);
         existingStop.lastScan = stop.lastScan;
 
         // Update the array with the manipulated value
         finalManifest[stopIndex] = existingStop;
-        console.log("Last Scan after manipulation:", existingStop.lastScan);
+        console.error("Last Scan after manipulation:", existingStop.lastScan);
     }
   }
   return finalManifest;
@@ -502,7 +505,7 @@ const main = async () => {
       // Select and lock a mailbox. Throws if mailbox does not exist
       let lock = await client.getMailboxLock('INBOX');
         const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
-        console.error(outputDate + "----EMAILS FETCH BELOW---");
+        console.error(outputDate() + "----EMAILS FETCH BELOW---");
         console.error(emails);
         console.error("----END OF EMAILS---");
         
@@ -534,7 +537,7 @@ const main = async () => {
             }
         }
         if (todaysEmails.length > 0){
-            console.error(outputDate + " >> Manifest Extraction Started ...");
+            console.error(outputDate() + " >> Manifest Extraction Started ...");
             let result = await extractCsvAttachments({todayEmails:todaysEmails,errors:errors});
             if(result.successfull){
                 console.log('extraction and upload completed');
@@ -546,7 +549,7 @@ const main = async () => {
           return ({successfull: true, msg: 'No New Data for Today'});
         }
     } catch(error){
-      console.error(outputDate() + "Caught an Error in 'MAIN' function");
+      console.error(outputDate()  + "Caught an Error in 'MAIN' function");
       console.error(error);
   
       return ({successfull: false, msg:'Encountered an Error', error:error});
@@ -661,7 +664,7 @@ async function clearTempFolder(){
 async function keepAlive(){
   interval = 3600000;
   count = 1;
-  console.error(outputDate()+"Keep Alive Service Initiated, [Interval: "+ interval/60000+" mins]");
+  console.error(outputDate() + "Keep Alive Service Initiated, [Interval: "+ interval/60000+" mins]");
   startDate = new Date(2023,10,03);
   while (startDate.getDate() < 5) {
     console.log(outputDate() + "Keep Alive Ping: " + count++);
