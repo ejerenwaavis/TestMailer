@@ -502,6 +502,10 @@ const main = async () => {
       // Select and lock a mailbox. Throws if mailbox does not exist
       let lock = await client.getMailboxLock('INBOX');
         const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
+        console.error("----EMAILS FETCH BELOW---");
+        console.error(emails);
+        console.error("----END OF EMAILS---");
+        
         let todaysEmails = [];
         let errors = [];
         console.error("Email Count: "+ emails.length);
