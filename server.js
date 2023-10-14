@@ -48,6 +48,7 @@ const reportSchema = new mongoose.Schema({
                         lastScan: String,
                         barcode: String,
                         status: {type:{}, default:null},
+                        isPriority: {type:Boolean, default:false},
                         name: String,
                         street: String,
                         city: String,
@@ -81,6 +82,17 @@ const Brand = brandConn.model("Brand", brandSchema);
 
 
 var allBrands;
+
+const barcodeCacheSchema = new mongoose.Schema({
+  _id: String,
+  drivers: [{driverNumber:String,lastModified:Date}], //array of variants of the tracking prefixes
+  lastModified: Date,
+});
+const BarcodeCache = reportConn.model("BarcodeCache", barcodeCacheSchema);
+
+
+var allBarcodeCache = [];
+
 
 /** Email Config */
 const { ImapFlow } = require('imapflow');
@@ -126,19 +138,23 @@ app.listen(process.env.PORT || 3055, function () {
 
 /** Helper Funcrions */
 // Replace this function with your own logic to process CSV files
-async function processCsvAttachment(fileContent) {
+async function processCsvAttachment(fileContent, oldDrivers, driverNumber, emailDate) {
     //   console.log(`Found CSV attachment: ${fileName}`);
+    let drivers = oldDrivers
     let parsedJSON = papa.parse(fileContent);
     let arrayOfAddress = [];
     let errors = [];
     let totalRecords = 0;
+    let date = new Date(emailDate);
+
 
     for (let i = 1; i < parsedJSON.data.length; i++) {
           totalRecords++;
           let jsonAddress = {};
           jsonAddress.Barcode = parsedJSON.data[i][0];
-          let brand =  allBrands.filter( (foundBrand) => { return (foundBrand.trackingPrefixes.includes(jsonAddress.Barcode.substring(0,7))) })
+          let brand = await allBrands.filter( (foundBrand) => { return (foundBrand.trackingPrefixes.includes(jsonAddress.Barcode.substring(0,7))) })
           let brandName = (brand === undefined || brand.length == 0)? "## Unregistered Brand ##" : brand[0]._id;
+          jsonAddress.isPriority = isPriority(brandName);
           // console.log("*****");
           // console.log(options);
           // console.log(parsedJSON.data[i][1]);
@@ -203,6 +219,31 @@ async function processCsvAttachment(fileContent) {
                 // }
                 // console.log(jsonAddress);
                 // if (jsonAddress.Name != "undefined" && jsonAddress.Name != " Unknown name") {
+                  foundBarcode = await allBarcodeCache.find((bc) => bc._id === jsonAddress.barcode )
+                  if(foundBarcode){
+                    console.error("Found Existing Barcode: " + foundBarcode._id + " Under: "+ foundBarcode.drivers);
+                    for await(const driver of foundBarcode.drivers){
+                      const index = drivers.findIndex(i => i.driverNumber === driver.driverNumber);
+                      if(index !== -1){
+                        //found the driver to pull from
+                        console.error('found the driver index to pull from: ' + index);
+                        //modifying passed driver manifest
+                        oldManifest = drivers[index].manifest;
+                        drivers[index].manifest = await oldManifest.filter((item) => item.barcode !== foundBarcode._id); 
+                        console.error("Driver Number");
+                        console.error("Old Manifest length: " + oldManifest.length);
+                        console.error("New Manifest Length: " + drivers[index].manifest.length);
+                        console.error("New Manifest :");
+                        console.error(drivers[index].manifest);
+                      }else{
+                        console.error('Did not find driver index to pull from: ' + index);
+                      }
+                    }
+                    const barcodeIndex = allBarcodeCache.findIndex((bc) => bc._id === jsonAddress.barcode);
+                    allBarcodeCache[barcodeIndex].drivers.push({driverNumber:driverNumber, lastModified:date});
+                  }else{
+                    allBarcodeCache.push({_id:jsonAddress.barcode, drivers:[{driverNumber:driverNumber, lastModified:date}]});
+                  }
                   arrayOfAddress.push(jsonAddress);
                 // }
 
@@ -220,7 +261,7 @@ async function processCsvAttachment(fileContent) {
         // console.error(arrayOfAddress);
         // console.error(arrayOfAddress.length);
         // console.error(arrayOfAddress);
-        return arrayOfAddress;
+        return {manifest:arrayOfAddress, drivers:drivers};
 }
 async function extractCsvAttachments(data) {
     let emails = data.todayEmails;
@@ -238,39 +279,48 @@ async function extractCsvAttachments(data) {
       // Check if the attachment is a CSV file
       // console.log("\n*** ParsedEmail ***");
       // console.log(email.parsedEmail.attachments[0]);
-      let attachment = email.parsedEmail.attachments[0];
-      if (attachment.contentType === 'text/csv' || attachment.contentType === 'text/comma-separated-values') {
-        const fileName = attachment.filename;
-        const driverNumber = fileName.split('.')[0].split('-')[0]; 
-        const fileContent = attachment.content.toString('utf-8');
-        
-        // Pass the file name and content to your processing function here
-          let manifest = await processCsvAttachment(fileContent);
-          let driverSearch = drivers.filter((d) => d.driverNumber === driverNumber );
-          if(driverSearch.length > 0){
-            console.error("Duplicate Driver Found at " + emails.indexOf(email) + " "+ driverSearch[0].driverNumber);
-            // console.log(driverSearch);
-            let existingManifest = driverSearch[0].manifest;
-            let mergedManifests = await mergeManifest(existingManifest, manifest);
-            if(mergedManifests){
-              let driverIndex = drivers.findIndex(obj => obj.driverNumber === driverNumber);
-              if(driverIndex !== -1){
-                // console.log(driverIndex);
-                drivers[driverIndex].manifest = mergedManifests;
+      // let attachment = email.parsedEmail.attachments[0]; // Old Attachment process
+      let attachments = email.parsedEmail.attachments; // New Attachment process Handles multiple attachements
+      let emailDate = email.parsedEmail.date; // New Attachment process Handles multiple attachements
+      console.error(emailDate);
+      for await(const attachment of attachments){
+        if (attachment.contentType === 'text/csv' || attachment.contentType === 'text/comma-separated-values') {
+          const fileName = attachment.filename;
+          const driverNumber = fileName.split('.')[0].split('-')[0]; 
+          const fileContent = attachment.content.toString('utf-8');
+          
+          // Pass the file name and content to your processing function here
+            let processingResult = await processCsvAttachment(fileContent, drivers, driverNumber, emailDate);
+            drivers = processingResult.drivers;
+            let manifest = processingResult.manifest;
+            
+            let driverSearch = drivers.filter((d) => d.driverNumber === driverNumber );
+            if(driverSearch.length > 0){
+              console.error("Duplicate Driver Found at " + emails.indexOf(email) + " "+ driverSearch[0].driverNumber);
+              // console.log(driverSearch);
+              let existingManifest = driverSearch[0].manifest;
+              let mergedManifests = await mergeManifest(existingManifest, manifest);
+              if(mergedManifests){
+                let driverIndex = drivers.findIndex(obj => obj.driverNumber === driverNumber);
+                if(driverIndex !== -1){
+                  // console.log(driverIndex);
+                  drivers[driverIndex].manifest = mergedManifests;
+                }
+              }else{
+                errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Failed to Merge Manifest of Driver: "+driverNumber+""});
               }
             }else{
-              errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Failed to Merge Manifest of Driver: "+driverNumber+""});
+              drivers.push({driverNumber:driverNumber, manifest:manifest})
             }
-          }else{
-            drivers.push({driverNumber:driverNumber, manifest:manifest})
-          }
-          // return true;
-      }else{
-          errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incom[atible FileType"});
-          // console.error(email.envelope.from[0].address + " sent an incompatible filetype: " + fileName + " '"+attachment.contentType+"' ");
+            // return true;
+        }else{
+            errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incom[atible FileType"});
+            // console.error(email.envelope.from[0].address + " sent an incompatible filetype: " + fileName + " '"+attachment.contentType+"' ");
+        }
       }
     }
     reportDoc = {_id:today, date:today, drivers:drivers};
+    let saveCacheStatus = await saveBarcodeCache();
     let status = await saveReport(reportDoc);
     if (status){
       return {successfull:true, message:"Manfest Extraction Completed", errors:errors, driverCount:drivers.length};
@@ -364,6 +414,23 @@ async function saveReport(reportDoc){
     }
 }
 
+async function saveBarcodeCache(){
+    err = await BarcodeCache.deleteMany({});
+      if (err) {
+        console.error('Error deleting Barcode Caches:', err);
+      } else {
+        console.log('All Barcode documents have been deleted, now inserting new cache.');
+        BarcodeCache.insertMany(allBarcodeCache, (error, insertedDocs) => {
+          if (error) {
+            console.error('Error inserting Barcode Caches:', error);
+          } else {
+            console.log('Barcode CAched Saved successfully:', insertedDocs);
+          }
+        });
+      }
+}
+
+
 async function insertDriverDoc(reportID, driver){
   Report.findOneAndUpdate(
     { _id: reportID },
@@ -423,6 +490,7 @@ async function reportDocExists(report){
   exist = await Report.exists({_id:report._id});
   return exist;
 };
+
 
 async function driverDocExists(reportID, driver){
   exist = await Report.find({_id: reportID, drivers: { $elemMatch: { driverNumber: driver.driverNumber} }});
@@ -644,6 +712,42 @@ async function cacheBrands(){
     });
 }
 
+async function cacheBarcodes(){
+    allBarcodeCache = await BarcodeCache.find({},"-__v");
+    stringBarcodes = JSON.stringify(allBarcodeCache);
+    // reCon = JSON.parse(stringRoutes);
+    // console.log(reCon);
+    fs.mkdir(tempFilePath, (err) => {
+        if (err) {
+        // console.log(err.message);
+        // console.log(err.code);
+        if (err.code === "EEXIST") {
+            if(SERVER) 
+            console.error("Directory ALREADY Exists.");
+            fs.writeFile(tempFilePath + 'allBarcodes.txt', stringBarcodes, err => {
+                if (err) {
+                console.error(err);
+                }else{
+                if(SERVER) 
+                console.error("Brands written to file");
+                }
+            }); 
+        } else {
+            console.error(err.code);;
+            console.error(err);;
+        }
+        }else{
+        fs.writeFile(tempFilePath + 'allBarcodes.txt', stringBarcodes, err => {
+            if (err) {
+            console.error(err);
+            }else{
+            console.log("Barcodes written to file");
+            }
+        }); 
+        console.log("'/tmp' Directory was created.");
+        }
+    });
+}
 
 async function clearTempFolder(){
   fs.readdir(tempFilePath, (err, files) => {
@@ -677,3 +781,37 @@ async function keepAlive(){
 function outputDate() {
   return (new Date().toLocaleString()) + " >> ";
 }
+
+function getToday() {
+  return (new Date().toLocaleString()).setHours(0,0,0,0);
+}
+
+async function isPriority(brandName) {
+  if(priorityBrands != null){
+    result = await priorityBrands.some(p => (p.name).toLowerCase() == (brandName).toLowerCase());
+    return result;
+  }else{
+    console.log("Unable to Check for Priority");
+    return false;
+  }
+}
+
+
+const priorityBrands = [
+  { trackingPrefixes : [], name : 'Eat Clean To Go'},
+  { trackingPrefixes : [], name : 'Coldcart, Inc.'},
+  { trackingPrefixes : [], name : 'Grip Shipping Inc'},
+  { trackingPrefixes : [], name : 'WILD ALASKAN, INC.'},
+  { trackingPrefixes : [], name : 'DAILY HARVEST'},
+  { trackingPrefixes : [], name : "The Farmer's Dog, Inc."},
+  { trackingPrefixes : [], name : 'Butcherbox'},
+  { trackingPrefixes : [], name : 'Zara'},
+  { trackingPrefixes : [], name : 'Zara Home'}, 
+  { trackingPrefixes : [], name : 'SUN BASKET'}, 
+  { trackingPrefixes : [], name : 'GOBBLE INC'}, 
+  { trackingPrefixes : [], name : 'WALMART'}, 
+  { trackingPrefixes : [], name : 'CORPORATE PAYROLL SERVICES'}, 
+  { trackingPrefixes : [], name : 'PAYCHEX'}, 
+  { trackingPrefixes : [], name : 'ADP'}, 
+  { trackingPrefixes : [], name : 'eGourmet Solutions Inc.'}, 
+]
