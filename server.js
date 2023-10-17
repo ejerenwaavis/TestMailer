@@ -269,6 +269,7 @@ async function extractCsvAttachments(data) {
     let today = new Date();
     today.setHours(0,0,0,0);
     drivers = [];
+    driverList = [];
     
     console.error(outputDate() + "----EMAILS FROM EXTRACT CSV ATT. ---");
     for await (const em of emails) {
@@ -310,11 +311,13 @@ async function extractCsvAttachments(data) {
                 errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Failed to Merge Manifest of Driver: "+driverNumber+""});
               }
             }else{
+              driverName = await getDriverName(driverNumber);
+              driverList.push(driverName.name);
               drivers.push({driverNumber:driverNumber, manifest:manifest})
             }
             // return true;
         }else{
-            errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incom[atible FileType"});
+            errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incompatible FileType"});
             // console.error(email.envelope.from[0].address + " sent an incompatible filetype: " + fileName + " '"+attachment.contentType+"' ");
         }
       }
@@ -323,9 +326,9 @@ async function extractCsvAttachments(data) {
     let saveCacheStatus = await saveBarcodeCache();
     let status = await saveReport(reportDoc);
     if (status){
-      return {successfull:true, message:"Manfest Extraction Completed", errors:errors, driverCount:drivers.length};
+      return {successfull:true, message:"Manfest Extraction Completed", errors:errors, driverCount:drivers.length, drivers:driverList};
     }else{
-      return {successfull:false, message:"Failed to Extract/Save Report", errors:errors, driverCount:drivers.length};
+      return {successfull:false, message:"Failed to Extract/Save Report", errors:errors, driverCount:drivers.length, drivers:driverList};
     }
 }
 
@@ -579,6 +582,7 @@ const main = async () => {
         
         let todaysEmails = [];
         let errors = [];
+        let driverList = [];
         console.error("Email Count: "+ emails.length);
         
         for await (const email of emails) {
@@ -796,6 +800,11 @@ async function isPriority(brandName) {
   }
 }
 
+async function getDriverName(driverNumber){
+    driver = await (contractors.filter((c) => c.driverNumber === driverNumber))[0];
+    return (driver ?  driver : {driverNumber:driverNumber, name:"***" + driverNumber.substring(3)});
+}
+
 
 const priorityBrands = [
   { trackingPrefixes : [], name : 'Eat Clean To Go'},
@@ -814,4 +823,90 @@ const priorityBrands = [
   { trackingPrefixes : [], name : 'PAYCHEX'}, 
   { trackingPrefixes : [], name : 'ADP'}, 
   { trackingPrefixes : [], name : 'eGourmet Solutions Inc.'}, 
+]
+
+
+
+contractors = [
+  { driverNumber : '203593', name : 'Frankie ROBINSON'},
+  { driverNumber : '219029', name : 'Andreea OKONTA'},
+  { driverNumber : '227410', name : 'Yacouba NABE'},
+  { driverNumber : '230161', name : 'Jones MOORE'},
+  { driverNumber : '236765', name : 'Kenya SAMUELS'},
+  { driverNumber : '250660', name : 'Susan TAYLOR'},
+  { driverNumber : '253249', name : 'Christopher RUFFING'},
+  { driverNumber : '253799', name : 'Nestor PUENTES'},
+  { driverNumber : '253800', name : 'Mauricio MARULANDA'}, 
+  { driverNumber : '255305', name : 'Ana BAZA PAJAROS'},
+  { driverNumber : '256956', name : 'Avis EJERENWA'},
+  { driverNumber : '257085', name : 'Michael MCKEEVER'},
+  { driverNumber : '257137', name : 'Laray KING'},
+  { driverNumber : '257275', name : 'Freddy LOZANO'},
+  { driverNumber : '257329', name : 'Christopher TAYLOR'},
+  { driverNumber : '257398', name : 'Edwin BARHAM'},
+  { driverNumber : '257553', name : 'Anthony JACKSON'},
+  { driverNumber : '257596', name : 'Joseph JONES'},
+  { driverNumber : '257697', name : 'Jonathan GHOLSON'},
+  { driverNumber : '258743', name : 'Maria LOZANO'},
+  { driverNumber : '258823', name : 'Destiny SMITH'},
+  { driverNumber : '258852', name : 'Brenda CANAS MEJIA'},
+  { driverNumber : '258828', name : 'Emerald SHEARER'},
+  { driverNumber : '258986', name : 'Damon ILER'},
+  { driverNumber : '259013', name : 'Jhon PALACIO TINTINAGO'},
+  { driverNumber : '259016', name : 'Latasha PALMER'},
+  { driverNumber : '259027', name : 'Jorge GUTIERREZ'},
+  { driverNumber : '259257', name : 'Lenora TAYLOR'},
+  { driverNumber : '259353', name : 'Jessica TAPIA'},
+  { driverNumber : '259755', name : 'Lennys CENTENO CORDOVA'},
+  { driverNumber : '259908', name : 'Cornealius WHITFIELD'},
+  { driverNumber : '259945', name : 'Damien ROBINSON'},
+  { driverNumber : '260582', name : 'Natalie ILDEFONSO DIAZ'},
+  { driverNumber : '260066', name : 'Mark SEARCY'},
+  { driverNumber : '260616', name : 'Marquez JOHNSON'},
+  { driverNumber : '260708', name : 'Daiana SERNA SANCHEZ'},
+  { driverNumber : '260729', name : 'Antonio REDDING'},
+  { driverNumber : '260748', name : 'Timothy BURNS'},
+  { driverNumber : '260749', name : 'Malik DAY'},
+  { driverNumber : '261126', name : 'Nestor ENRIQUE URDANETA'},
+  { driverNumber : '261456', name : 'Jawaun MOSES'},
+  { driverNumber : '261486', name : 'Enos MULLINGS'},
+  { driverNumber : '261767', name : 'Gia TAYLOR'},
+  { driverNumber : '262479', name : 'Shamira LEE JUAREZ'},
+  { driverNumber : '262862', name : 'Jamilah TURNER'},
+  { driverNumber : '262863', name : 'Keema BRIDGEWATER'},
+  { driverNumber : '262942', name : 'Anterio BATEMAN'},
+  { driverNumber : '263152', name : 'Maria DUQUE VELEZ'},
+  { driverNumber : '263388', name : 'Willie MURRELL JR'},
+  { driverNumber : '262946', name : 'Dominique WATSON'},
+  { driverNumber : '263442', name : 'Cynthia TORRES'},
+  { driverNumber : '263461', name : 'Adina JONES'},
+  { driverNumber : '264337', name : 'Annette GAMBLE'},
+  { driverNumber : '263976', name : 'Delonte WRIGHT'},
+  { driverNumber : '264483', name : 'Philip MADISON'},
+  { driverNumber : '264576', name : 'Steven MOTIERAM'},
+  { driverNumber : '264505', name : 'Sheafra HAMMETT'},
+  { driverNumber : '264774', name : 'Al BAKER'},
+  { driverNumber : '264886', name : 'Lionel CAVE'},
+  { driverNumber : '264821', name : 'Derick SMITH'},
+  { driverNumber : '265078', name : 'Jasmine COGGINS'},
+  { driverNumber : '265122', name : 'Cynthia COLLINS'},
+  { driverNumber : '265151', name : 'Keisa SULLIVAN'},
+  { driverNumber : '265165', name : 'Darrell LAKE JR'},
+  { driverNumber : '265219', name : 'Akeem ALCOTT'},
+  { driverNumber : '265265', name : 'Brittany SUMLER'},
+  { driverNumber : '265289', name : 'Patrick WILLIAMS'},
+  { driverNumber : '265400', name : 'John-Thomas GARNER'},
+  { driverNumber : '265598', name : 'Moro DIALLO'},
+  { driverNumber : '265750', name : 'Sandra MARIN LOZANO'},
+  { driverNumber : '265777', name : 'Tyquan WILLIAMS'},
+  { driverNumber : '266049', name : 'Michael HAUSER'},
+  { driverNumber : '266687', name : 'Kimicion BROWN'},
+  { driverNumber : '266122', name : 'Edwin THURANIRA'},
+  { driverNumber : '266822', name : 'Ilyas ZOUHEIR'},
+  { driverNumber : '267199', name : 'Isemelda JOSEPH DURACIN'},
+  { driverNumber : '268645', name : 'Freddy MURILLO'},
+  { driverNumber : '268717', name : 'Reshonnah HARVEY'},
+  { driverNumber : '268845', name : 'Christian GALVEZ'},
+  { driverNumber : '269487', name : 'Justin MCCALLA'},
+  { driverNumber : '269640', name : 'Jesus CONTRERAS QUINTERO'}
 ]
