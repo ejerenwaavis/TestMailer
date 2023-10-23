@@ -279,8 +279,6 @@ async function extractCsvAttachments(data) {
     for await (const email of emails) {
       // Check if the attachment is a CSV file
       // console.log("\n*** ParsedEmail ***");
-      // console.log(email.parsedEmail.attachments[0]);
-      // let attachment = email.parsedEmail.attachments[0]; // Old Attachment process
       let attachments = email.parsedEmail.attachments; // New Attachment process Handles multiple attachements
       let emailDate = email.parsedEmail.date; // New Attachment process Handles multiple attachements
       console.error(emailDate);
