@@ -39,23 +39,23 @@ const reportConn = mongoose.createConnection(reportDB, {
 
 
 const reportSchema = new mongoose.Schema({
-    _id: Date,
-    date: {type:Date, default: new Date()},
-    drivers:[{
-                driverNumber: Number, 
-                manifest:[{
-                        brand: String,
-                        lastScan: String,
-                        barcode: String,
-                        status: {type:{}, default:null},
-                        isPriority: {type:Boolean, default:false},
-                        name: String,
-                        street: String,
-                        city: String,
-                        state: String,
-                        country: String,
-                }]
-            }]
+  _id: Date,
+  date: {type:Date, default: new Date()},
+  drivers:[{
+    driverNumber: Number, 
+    manifest:[{
+      brand: String,
+      lastScan: String,
+      barcode: String,
+      status: {type:{}, default:null},
+      isPriority: {type:Boolean, default:false},
+      name: String,
+      street: String,
+      city: String,
+      state: String,
+      country: String,
+    }]
+  }]
 });
 const Report = reportConn.model("Report", reportSchema);
 
@@ -589,20 +589,24 @@ const main = async () => {
                 console.error("Found Email: ");
 
                 email.parsedEmail = await simpleParser(email.source);
-                let attachment = email.parsedEmail.attachments[0]; 
-                let fileName = attachment.filename;
-                let todaysManifest = await isTodaysManifest(fileName);
-                let validFileName = await isValidFileName(fileName);
-                if(validFileName){
+                let attachments = email.parsedEmail.attachments; 
+                for await(const attachment of attachments){
+                  let fileName = attachment.filename;
+                  let todaysManifest = await isTodaysManifest(fileName);
+                  let validFileName = await isValidFileName(fileName);
+                  if(validFileName){
                     if(todaysManifest){
-                        todaysEmails.push(email);
+                      todaysEmails.push(email);
                     }else{
-                        errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Outdated Manifest"});
-                        // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' ");
+                      errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Outdated Manifest"});
+                      // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' ");
                     }
-                }else{
-                        errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Mutilated FileName"});
-                        // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' 
+                  }else if(attachment.contentType.includes("zip")){
+                    errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Invalid File Type"});
+                  }else{
+                    errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Mutilated FileName"});
+                    // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' 
+                  }
                 }
             }
         }
@@ -906,5 +910,13 @@ contractors = [
   { driverNumber : '268717', name : 'Reshonnah HARVEY'},
   { driverNumber : '268845', name : 'Christian GALVEZ'},
   { driverNumber : '269487', name : 'Justin MCCALLA'},
-  { driverNumber : '269640', name : 'Jesus CONTRERAS QUINTERO'}
+  { driverNumber : '269640', name : 'Jesus CONTRERAS QUINTERO'},
+  { driverNumber : '271385', name : 'Kiara MADDEN'},
+  { driverNumber : '271386', name : 'Morris BRATTS'},
+  { driverNumber : '271388', name : 'Ronald TORRES BACALAO'},
+  { driverNumber : '271464', name : 'Blondy MEDINA'},
+  { driverNumber : '271670', name : 'Eliana CORREA MORENO'},
+  { driverNumber : '271881', name : 'Joe CEBALLOS'},
+  { driverNumber : '272105', name : 'Sadan SYLLA'},
+  { driverNumber : '272246', name : 'Angela MOSLEY'},
 ]
