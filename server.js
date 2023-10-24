@@ -60,28 +60,21 @@ const reportSchema = new mongoose.Schema({
 const Report = reportConn.model("Report", reportSchema);
 
 
-var allBrands;
-
-
-
 
 // Mongoose Brands DB Connection Setup
 const brandDB = "mongodb+srv://" + MONGOUSER + ":" + MONGOPASSWORD + MONGOURI2;
-
 const brandConn = mongoose.createConnection(brandDB, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 });
-
-
 const brandSchema = new mongoose.Schema({
   _id: String,
   trackingPrefixes: [String], //array of variants of the tracking prefixes
 });
 const Brand = brandConn.model("Brand", brandSchema);
-
-
 var allBrands;
+
+
 
 const barcodeCacheSchema = new mongoose.Schema({
   _id: String,
@@ -89,8 +82,6 @@ const barcodeCacheSchema = new mongoose.Schema({
   lastModified: Date,
 });
 const BarcodeCache = reportConn.model("BarcodeCache", barcodeCacheSchema);
-
-
 var allBarcodeCache = [];
 
 
