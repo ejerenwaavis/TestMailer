@@ -351,13 +351,13 @@ async function extractCsvAttachments(data) {
     console.log(result);
     // let result = await //saveBulkItemizedReport(drivers); // New Individualized Saving
 
-    if (!result){
+    if (result){
       console.log("Result has no errors");
-      return {successfull:true, message:"Manfest Extraction Completed", errors:[result.errors], driverCount:drivers.length, drivers:driverList};
+      return {successfull:true, message:"Manfest Extraction Completed", errors:result.errors, driverCount:drivers.length, drivers:driverList};
     }else{
-      console.log("Errors Found");
-      console.log(result.errors.toString());
-      return {successfull:false, message:"Failed to Extract/Save Report", errors:[result.errors], driverCount:drivers.length, drivers:driverList};
+      // console.log("Errors Found");
+      // console.log(result.errors.toString());
+      return {successfull:false, message:"Failed to Extract/Save Report", errors:result.errors, driverCount:drivers.length, drivers:driverList};
     }
 }
 
@@ -562,16 +562,16 @@ async function insertNewStopsIfNotExist(driver){
     }
     let saveExistingDocResult = await existingDoc.save();
     if(saveExistingDocResult){
-      console.log("ALL GOOD for EXISTING DOC???");
+      // console.log("ALL GOOD for EXISTING DOC???");
       result.modifications = cacheModifications;
       // console.log(saveExistingDocResult);
     }else{
-      console.log("Some erros occured???");
+      console.log("Some erros occured saving existing doc???");
       // console.log(saveExistingDocResult);
     }
   }else{
     // console.log(existingDoc);
-    console.log("Driver Does NOT Exists");
+    // console.log("Driver Does NOT Exists");
     let newDriverReport = new DriverReport(driver);
     newSaveResult = await newDriverReport.save();
     if(newSaveResult){
