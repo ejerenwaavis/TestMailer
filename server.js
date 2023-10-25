@@ -134,6 +134,7 @@ app.route(APP_DIRECTORY + "/extract")
     // let strReq = await stringify(req);
     try{
       let response = await bulkItemizedReportPull();
+      console.log(response);
       if(response){
         res.send(response);
       }else{
@@ -160,6 +161,8 @@ app.listen(process.env.PORT || 3055, function () {
 // Replace this function with your own logic to process CSV files
 async function processCsvAttachment(fileContent, oldDrivers, driverNumber, emailDate) {
     //   console.log(`Found CSV attachment: ${fileName}`);
+    // console.error(outputDate() + " Processing Extractions CSV's");
+
     let drivers = oldDrivers
     let parsedJSON = papa.parse(fileContent);
     let arrayOfAddress = [];
@@ -233,12 +236,12 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
 
           foundBarcode = await allBarcodeCache.find((bc) => bc._id === jsonAddress.barcode )
           if(foundBarcode){
-            console.error("Found Existing Barcode: " + foundBarcode._id + " Under: "+ foundBarcode.drivers.toString());
+            // console.error("Found Existing Barcode: " + foundBarcode._id + " Under: "+ foundBarcode.drivers.toString());
             for await(const driver of foundBarcode.drivers){
               const index = drivers.findIndex(i => i.driverNumber === driver.driverNumber);
               if(index !== -1){
-                //found the driver to pull from
-                console.error('found the driver index to pull from: ' + index);
+                // found the driver to pull from
+                // console.error('found the driver index to pull from: ' + index);
                 //modifying passed driver manifest
                 oldManifest = drivers[index].manifest;
                 drivers[index].manifest = await oldManifest.filter((item) => item.barcode !== foundBarcode._id); 
@@ -248,7 +251,7 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                 // console.error("New Manifest :");
                 // console.error(drivers[index].manifest);
               }else{
-                console.error('Did not find driver index to pull from: ' + index);
+                // console.error('Did not find driver index to pull from: ' + index);
               }
             }
             const barcodeIndex = allBarcodeCache.findIndex((bc) => bc._id === jsonAddress.barcode);
@@ -269,18 +272,18 @@ async function extractCsvAttachments(data) {
     drivers = [];
     driverList = [];
     
-    console.error(outputDate() + "----EMAILS FROM EXTRACT CSV ATT. ---");
-    for await (const em of emails) {
-      console.error("Email Seq#: "+em.seq + ", From: "+ em.envelope.from[0].name + " | email: " + em.envelope.from[0].address);
-    };
-    console.error("----END OF EMAILS PRINT FROM EXTRACT CSV ATT. ---");
+    console.error(outputDate() + " Extracting CSV's");
+    // for await (const em of emails) {
+    //   console.error("Email Seq#: "+em.seq + ", From: "+ em.envelope.from[0].name + " | email: " + em.envelope.from[0].address);
+    // };
+    // console.error("----END OF EMAILS PRINT FROM EXTRACT CSV ATT. ---");
     for await (const email of emails) {
       // Check if the attachment is a CSV file
       // console.log("\n*** ParsedEmail ***");
       let attachments = email.parsedEmail.attachments; // New Attachment process Handles multiple attachements
       let emailDate = email.parsedEmail.date; // New Attachment process Handles multiple attachements
       let subject = email.parsedEmail.subject;
-      console.error(emailDate);
+      // console.error(emailDate);
       for await(const attachment of attachments){
         if (attachment.contentType === 'text/csv' || attachment.contentType === 'text/comma-separated-values') {
           const fileName = attachment.filename;
@@ -295,7 +298,7 @@ async function extractCsvAttachments(data) {
             //check if an existing driver exists
             let driverSearch = drivers.filter((d) => d.driverNumber === driverNumber );
             if(driverSearch.length > 0){
-              console.error("Duplicate Driver Found at " + emails.indexOf(email) + " "+ driverSearch[0].driverNumber);
+              // console.error("Duplicate Driver Found at " + emails.indexOf(email) + " "+ driverSearch[0].driverNumber);
               // console.log(driverSearch);
               //merge old and new manifest together
               let existingManifest = driverSearch[0].manifest;
@@ -317,7 +320,7 @@ async function extractCsvAttachments(data) {
                 date: today,
                 driverNumber: driverName.driverNumber, 
                 driverName: driverName.name, 
-                driverAllias: (subject ? subject : null), 
+                driverAllias: (subject ? subject : email.envelope.from[0].name), 
                 manifest:manifest,
                 lastUpdated: null,
               })
@@ -329,14 +332,32 @@ async function extractCsvAttachments(data) {
         }
       }
     }
-    reportDoc = {_id:today, date:today, drivers:drivers}; // OldReportDoc Creation to be commented out
+    // reportDoc = {_id:today, date:today, drivers:drivers}; // OldReportDoc Creation to be commented out
     let saveCacheStatus = await saveBarcodeCache();
     // let status = await saveReport(reportDoc); // // OldReportDoc Saving to be commented out
-    let result = await saveBulkItemizedReport(drivers); // New Individualized Saving
-    if (!result.error){
-      return {successfull:true, message:"Manfest Extraction Completed", errors:errors, driverCount:drivers.length, drivers:driverList};
+    let result = {errors:errors, insertedDocs:[], modifications:[]};
+    for await (const driver of drivers){
+      try{
+        res = await insertNewStopsIfNotExist(driver);
+        result.modifications = [...result.modifications, ... res.modifications];
+        result.insertedDocs = [...result.insertedDocs, ... res.insertedDocs];
+        result.errors = [...result.errors, ...res.errors];
+      }catch (err){
+        result.errors.push(err)
+        console.log(err);
+      }
+    }
+    console.log("end of processing");
+    console.log(result);
+    // let result = await //saveBulkItemizedReport(drivers); // New Individualized Saving
+
+    if (!result){
+      console.log("Result has no errors");
+      return {successfull:true, message:"Manfest Extraction Completed", errors:[result.errors], driverCount:drivers.length, drivers:driverList};
     }else{
-      return {successfull:false, message:"Failed to Extract/Save Report", errors:[...errors, result.error], driverCount:drivers.length, drivers:driverList};
+      console.log("Errors Found");
+      console.log(result.errors.toString());
+      return {successfull:false, message:"Failed to Extract/Save Report", errors:[result.errors], driverCount:drivers.length, drivers:driverList};
     }
 }
 
@@ -426,20 +447,39 @@ async function saveReport(reportDoc){
 }
 
 
-async function saveBulkItemizedReport(drivers){
-    // let drivers = new Report(reportDoc);
+async function saveBulkItemizedReport(drs){
+    let drivers = drs;
     try{
-      result = await DriverReport.insertMany(drivers);
+      result = await DriverReport.insertMany(drivers, {ordered:true});
       console.log(Object.getOwnPropertyNames(result));
+      console.log(error.insertedDocs);
       return {result:result};
     }catch(error){
-      if(error.message.includes("duplicate key error")){
-        console.log("main report already pulled, start individual process");
-      }
       console.log("\nResult");
       console.log(error.result);
       console.log("\nInserted Docs");
       console.log(error.insertedDocs);
+      if(error.message.includes("duplicate key error")){
+        console.log("main report already pulled, start individual process");
+        if(error.insertedDocs.length > 0){
+          for await(const doc of error.insertedDocs){
+            console.log(doc._id);
+            drivers = drivers.filter(d => d._id !== doc._id);
+          }
+          console.log("Now find a way to save these remainig ones");
+          console.log(drivers.length);
+          for await(const driver of drivers){
+           result = await insertNewStopsIfNotExist(driver);
+           console.log('done processing new stops');
+          }
+          //functoin to save individual updates here
+        }else{
+          for await(const driver of drivers){
+           result = await insertNewStopsIfNotExist(driver);
+           console.log('done processing new stops');
+          }
+        }
+      }
       // console.log(Object.getOwnPropertyNames(error));
       // 'stack', 'message', 'code', 'writeErrors', 'result', 'insertedDocs'
       return {error:error};
@@ -483,6 +523,69 @@ async function insertDriverDoc(reportID, driver){
   );
 }
 
+async function insertNewStopsIfNotExist(driver){ 
+  // inserts new stops to the driver if already exists otherwise inserts a new driver document
+  existingDoc = await driverReportExists(driver._id);
+  let result = {errors:[], insertedDocs:[], modifications:[]}
+  let cacheModifications = [];
+  if(existingDoc){
+    for await (const stop of driver.manifest){
+      //check if the stop exisits in mongo database
+      if(!(existingDoc.manifest.some(s => s.barcode === stop.barcode))){
+        console.log("stop does not exist ...subtract first and then add");
+        oldStopOwners = await DriverReport.find({ 'manifest': { $elemMatch: { barcode: stop.barcode } }});
+        if(oldStopOwners){
+          console.log("Found Old Owner");
+          console.log("Pulling stop");
+          for await(const oldStopOwner of oldStopOwners){
+            console.log("old manifest length: " + oldStopOwner.manifest.length);
+            oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
+            console.log("new manifest length: " + oldStopOwner.manifest.length);
+            saveResult = await oldStopOwner.save();
+            if(saveResult){
+              console.log("SAVED OLD OWNER SUCCESSFULLY");
+              cacheModifications.push({driverName:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted'})
+              existingDoc.manifest.push(stop);
+            }else{
+              result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
+              console.log("Error SAving OWNER SUCCESSFULLY");
+            }
+          }
+        }else{
+          console.log("No Old Owner");
+          cacheModifications.push({driverName:existingDoc.driverName, stopBarcode: stop.barcode, operation:'merged'});
+          existingDoc.manifest.push(stop);
+        }
+      }else{
+        // console.log("stop Already exisist....skiping");
+      }
+    }
+    let saveExistingDocResult = await existingDoc.save();
+    if(saveExistingDocResult){
+      console.log("ALL GOOD for EXISTING DOC???");
+      result.modifications = cacheModifications;
+      // console.log(saveExistingDocResult);
+    }else{
+      console.log("Some erros occured???");
+      // console.log(saveExistingDocResult);
+    }
+  }else{
+    // console.log(existingDoc);
+    console.log("Driver Does NOT Exists");
+    let newDriverReport = new DriverReport(driver);
+    newSaveResult = await newDriverReport.save();
+    if(newSaveResult){
+      result.insertedDocs.push({driverName:driver.driverName, operation:'instered new Driver'})
+      // console.log('saved New Driver successfully');
+    }else{
+      result.errors.push({msg:"Error Saving New Driver", driverName:driver.driverName})
+      // console.log('Failed to save NEW DriverReport ');
+    }
+  }
+  return result;
+}
+
+
 async function insertNewStops(reportID, driverNumber, newStops){
 
   const complexCriteria = {
@@ -522,6 +625,11 @@ async function deleteReport(report){
 
 async function reportDocExists(report){
   exist = await Report.exists({_id:report._id});
+  return exist;
+};
+
+async function driverReportExists(driverReportID){
+  exist = await DriverReport.findOne({_id:driverReportID});
   return exist;
 };
 
@@ -607,9 +715,9 @@ const main = async () => {
       // Select and lock a mailbox. Throws if mailbox does not exist
       let lock = await client.getMailboxLock('INBOX');
         const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
-        console.error(outputDate() + "----EMAILS FETCH BELOW---");
-        console.error(emails);
-        console.error("----END OF EMAILS---");
+        // console.error(outputDate() + "----EMAILS FETCH BELOW---");
+        // console.error(emails);
+        // console.error("----END OF EMAILS---");
         
         let todaysEmails = [];
         let errors = [];
@@ -619,7 +727,8 @@ const main = async () => {
         for await (const email of emails) {
             let isTodayMail = await isToday(new Date(email.envelope.date));
             if(isTodayMail){
-                console.error("Found Email: ");
+                console.error('properties of email');
+                console.error(Object.getOwnPropertyNames(email));
 
                 email.parsedEmail = await simpleParser(email.source);
                 let attachments = email.parsedEmail.attachments; 
@@ -698,19 +807,23 @@ const bulkItemizedReportPull = async () => {
       // Select and lock a mailbox. Throws if mailbox does not exist
       let lock = await client.getMailboxLock('INBOX');
         const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
-        console.error(outputDate() + "----EMAILS FETCH BELOW---");
-        console.error(emails);
-        console.error("----END OF EMAILS---");
+        // console.error(outputDate() + "----EMAILS FETCH BELOW---");
+        // console.error(emails);
+        // console.error("----END OF EMAILS---");
         
         let todaysEmails = [];
         let errors = [];
         let driverList = [];
-        console.error("Email Count: "+ emails.length);
+        // console.error("Email Count: "+ emails.length);
         
         for await (const email of emails) {
             let isTodayMail = await isToday(new Date(email.envelope.date));
             if(isTodayMail){
-                console.error("Found Email: ");
+                // console.error("Found Email: ");
+
+                // console.error('email flags');
+                // console.error(email.flags);
+                // console.error(Object.getOwnPropertyNames(email));
 
                 email.parsedEmail = await simpleParser(email.source);
                 let attachments = email.parsedEmail.attachments; 
@@ -735,10 +848,15 @@ const bulkItemizedReportPull = async () => {
             }
         }
         if (todaysEmails.length > 0){
-            console.error(outputDate() + " >> Manifest Extraction Started ...");
+            console.error(outputDate() + "Manifest Extraction Started...");
             let result = await extractCsvAttachments({todayEmails:todaysEmails,errors:errors});
+            // console.log("Result Object After extractprocess");
+            // console.log(result);
             if(result.successfull){
                 console.log('extraction and upload completed');
+                return result
+            }else{
+                console.log('extraction and upload completed with errors');
                 return result
             }
         }else{
@@ -747,7 +865,7 @@ const bulkItemizedReportPull = async () => {
           return ({successfull: true, msg: 'No New Data for Today'});
         }
     } catch(error){
-      console.error(outputDate()  + "Caught an Error in 'MAIN' function");
+      console.error(outputDate()  + "  Caught an Error in 'MAIN' function");
       console.error(error);
   
       return ({successfull: false, msg:'Encountered an internal processing Error', error:errors});
