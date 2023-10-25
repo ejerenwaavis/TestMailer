@@ -572,16 +572,56 @@ async function insertNewStopsIfNotExist(driver){
   }else{
     // console.log(existingDoc);
     // console.log("Driver Does NOT Exists");
-    let newDriverReport = new DriverReport(driver);
-    newSaveResult = await newDriverReport.save();
-    if(newSaveResult){
-      result.insertedDocs.push({driverName:driver.driverName, operation:'instered new Driver'})
-      // console.log('saved New Driver successfully');
-    }else{
-      result.errors.push({msg:"Error Saving New Driver", driverName:driver.driverName})
-      // console.log('Failed to save NEW DriverReport ');
+    // check if driiver stops exists elsewhere and pull them
+    for await(const stop of driver.manifest){
+      oldStopOwners = await DriverReport.find({ 'manifest': { $elemMatch: { barcode: stop.barcode } }});
+      if(oldStopOwners){
+        // console.log("Found Old Owner - ELSE BLOCK");
+        // console.log("Pulling stop - ELSE BLOCK");
+        for await(const oldStopOwner of oldStopOwners){
+          console.log("old manifest length: " + oldStopOwner.manifest.length);
+          oldStop = await oldStopOwner.manifest.find(os => os.barcode === stop.barcode);
+          oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
+          driverStopIndex = await driver.manifest.findIndex(os => os.barcode !== stop.barcode);
+          if(driverStopIndex != -1){
+            driver.manifest[driverStopIndex] = oldStop;
+          }else{
+            driver.manifest.push(oldStop);
+          }
+          console.log("new manifest length: " + oldStopOwner.manifest.length);
+          saveResult = await oldStopOwner.save();
+          if(saveResult){
+            console.log("SAVED OLD OWNER SUCCESSFULLY IN ELSE BLOCK");
+            cacheModifications.push({driverName:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted'})
+            existingDoc.manifest.push(stop);
+          }else{
+            result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
+            console.log("Error SAving OWNER SUCCESSFULLY");
+          }
+        }
+      }else{
+        console.log("No Old Owner");
+      }
     }
+    try{
+      let newDriverReport = new DriverReport(driver);
+      newSaveResult = await newDriverReport.save();
+      if(newSaveResult){
+        result.insertedDocs.push({driverName:driver.driverName, operation:'instered new Driver'})
+        // console.log('saved New Driver successfully');
+      }else{
+        result.errors.push({msg:"Error Saving New Driver", driverName:driver.driverName});
+        // console.log('Failed to save NEW DriverReport ');
+      }
+    }catch(err){
+      console.log("ERROR IN ELSE DRIVER SAVE");
+      result.errors.push({msg:err.msg, driverName:driver.driverName})
+    }
+    
   }
+
+
+    
   return result;
 }
 
