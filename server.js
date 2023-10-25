@@ -592,7 +592,7 @@ async function insertNewStopsIfNotExist(driver){
           saveResult = await oldStopOwner.save();
           if(saveResult){
             console.log("SAVED OLD OWNER SUCCESSFULLY IN ELSE BLOCK");
-            cacheModifications.push({driverName:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted'})
+            cacheModifications.push({oldOwner:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted', newStopOwner:driver.driverName})
             existingDoc.manifest.push(stop);
           }else{
             result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
