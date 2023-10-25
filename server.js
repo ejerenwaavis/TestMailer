@@ -333,7 +333,7 @@ async function extractCsvAttachments(data) {
       }
     }
     // reportDoc = {_id:today, date:today, drivers:drivers}; // OldReportDoc Creation to be commented out
-    let saveCacheStatus = await saveBarcodeCache();
+    // let saveCacheStatus = await saveBarcodeCache();
     // let status = await saveReport(reportDoc); // // OldReportDoc Saving to be commented out
     let result = {errors:errors, insertedDocs:[], modifications:[]};
     for await (const driver of drivers){
