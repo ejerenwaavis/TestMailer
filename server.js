@@ -73,7 +73,7 @@ const driverReportSchema = new mongoose.Schema({
         barcode: String,
         isPriority: Boolean,
         lastScan: String,
-        Events: {type:[{}], default:null},
+        Events: {type:{}, default:null},
         name: String,
         street: String,
         city: String,
@@ -574,7 +574,7 @@ async function insertNewStopsIfNotExist(driver){
     // console.log("Driver Does NOT Exists");
     // check if driiver stops exists elsewhere and pull them
     for await(const stop of driver.manifest){
-      oldStopOwners = await DriverReport.find({ 'manifest': { $elemMatch: { barcode: stop.barcode } }});
+      oldStopOwners = await DriverReport.find({date:driver.date, 'manifest': { $elemMatch: { barcode: stop.barcode } }});
       if(oldStopOwners){
         // console.log("Found Old Owner - ELSE BLOCK");
         // console.log("Pulling stop - ELSE BLOCK");
@@ -593,7 +593,7 @@ async function insertNewStopsIfNotExist(driver){
           if(saveResult){
             console.log("SAVED OLD OWNER SUCCESSFULLY IN ELSE BLOCK");
             cacheModifications.push({oldOwner:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted', newStopOwner:driver.driverName})
-            existingDoc.manifest.push(stop);
+            // existingDoc.manifest.push(stop);
           }else{
             result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
             console.log("Error SAving OWNER SUCCESSFULLY");
