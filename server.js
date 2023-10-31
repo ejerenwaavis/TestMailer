@@ -142,7 +142,7 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
     for (let i = 1; i < parsedJSON.data.length; i++) {
           totalRecords++;
           let jsonAddress = {};
-          jsonAddress.Barcode = parsedJSON.data[i][0];
+          jsonAddress.Barcode = (parsedJSON.data[i][0]).trim();
           let brand = await allBrands.filter( (foundBrand) => { return (foundBrand.trackingPrefixes.includes(jsonAddress.Barcode.substring(0,7))) })
           let brandName = (brand === undefined || brand.length == 0)? "## Unregistered Brand ##" : brand[0]._id;
           jsonAddress.isPriority = isPriority(brandName);
@@ -185,8 +185,8 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
 
                         jsonAddress = {
                         brand: brandName,
-                        barcode: parsedJSON.data[i][0],
-                        lastScan: parsedJSON.data[i][1],
+                        barcode: (parsedJSON.data[i][0]).trim(),
+                        lastScan: (parsedJSON.data[i][1]).trim(),
                         name: name,//((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
                         // apt:(splitAddress[1]+"").trim(),
                         street: street,// (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim(),
@@ -198,8 +198,8 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                     } else {
                         jsonAddress = {
                         brand: brandName,
-                        barcode: parsedJSON.data[i][0],
-                        lastScan: parsedJSON.data[i][1],
+                        barcode: (parsedJSON.data[i][0]).trim(),
+                        lastScan: (parsedJSON.data[i][1]).trim(),
                         name: ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
                         street: (splitAddress[1] + "").trim(),
                         city: (splitAddress[2] + "").trim(),
