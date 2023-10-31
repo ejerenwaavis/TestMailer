@@ -145,7 +145,7 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
           jsonAddress.Barcode = (parsedJSON.data[i][0]).trim();
           let brand = await allBrands.filter( (foundBrand) => { return (foundBrand.trackingPrefixes.includes(jsonAddress.Barcode.substring(0,7))) })
           let brandName = (brand === undefined || brand.length == 0)? "## Unregistered Brand ##" : brand[0]._id;
-          jsonAddress.isPriority = isPriority(brandName);
+          
           // console.log("*****");
           // console.log(options);
           // console.log(parsedJSON.data[i][1]);
@@ -165,18 +165,35 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                 // console.log(splitAddress.includes(" US"));
                 // console.log(splitAddress);
                 // if (options.extractFor === "roadWarrior" || options.extractFor === "route4me") {
+                  console.log(splitAddress.length, " - ", splitAddress);
                     if (splitAddress.length > 5) {
                         let country = (splitAddress[5] + "").trim();
                         let countryProcessed = "";
-                        let name = ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A";
-                        let street = (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim();
+                        let name = ((splitAddress[0] + "").trim()) ? splitAddress[0].trim() : "N/A";
+                        let street = "";
+                        let tentativeApt = (splitAddress[1] + "").trim();
+                        if(tentativeApt.toLowerCase().includes("unit") 
+                        || tentativeApt.toLowerCase().includes("apt ") 
+                        || tentativeApt.toLowerCase().includes("apartment")
+                        || tentativeApt.toLowerCase().includes("suite")
+                        || tentativeApt.toLowerCase().includes("ste")
+                        || tentativeApt.toLowerCase().includes("rm")
+                        || tentativeApt.toLowerCase().includes("room")
+                        || tentativeApt.length < 5
+                        ){
+                          console.log("apt string: ", tentativeApt);
+                          console.log("apartment: ", true);
+                          street = (splitAddress[2] + "").trim() + ", " + tentativeApt;
+                        }else{
+                          console.log("apartment : ",false);
+                         street = tentativeApt+ ", " + (splitAddress[2] + "").trim() ;
+                       }
+
                         let city = (splitAddress[3] + "").trim();
                         try{
                             if (country != "UNDEFINED") {
                                 countryProcessed = (country.length > 3) ? country.split(" ")[0][0] + country.split(" ")[1][0] : country;
-                    
-                                // console.log(JSON.stringify(address));
-                            }
+                        }
                         }catch(error){
                             // console.log("errors where found at " + (i + 3));
                             errors.push({name:name, line: (i+1), fullAddress: street + " " +city});
@@ -187,6 +204,7 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                         brand: brandName,
                         barcode: (parsedJSON.data[i][0]).trim(),
                         lastScan: (parsedJSON.data[i][1]).trim(),
+                        isPriority: await isPriority(brandName),
                         name: name,//((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
                         // apt:(splitAddress[1]+"").trim(),
                         street: street,// (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim(),
@@ -200,6 +218,7 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                         brand: brandName,
                         barcode: (parsedJSON.data[i][0]).trim(),
                         lastScan: (parsedJSON.data[i][1]).trim(),
+                        isPriority: await isPriority(brandName),
                         name: ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
                         street: (splitAddress[1] + "").trim(),
                         city: (splitAddress[2] + "").trim(),
@@ -212,7 +231,7 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                 // if (jsonAddress.Name != "undefined" && jsonAddress.Name != " Unknown name") {
                   foundBarcode = await allBarcodeCache.find((bc) => bc._id === jsonAddress.barcode )
                   if(foundBarcode){
-                    console.error("Found Existing Barcode: " + foundBarcode._id + " Under: "+ foundBarcode.drivers);
+                    console.error("Found Existing Barcode: " , foundBarcode._id , " Under: " ,  foundBarcode.drivers);
                     for await(const driver of foundBarcode.drivers){
                       const index = drivers.findIndex(i => i.driverNumber === driver.driverNumber);
                       if(index !== -1){
@@ -222,10 +241,10 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                         oldManifest = drivers[index].manifest;
                         drivers[index].manifest = await oldManifest.filter((item) => item.barcode !== foundBarcode._id); 
                         console.error("Driver Number");
-                        console.error("Old Manifest length: " + oldManifest.length);
-                        console.error("New Manifest Length: " + drivers[index].manifest.length);
-                        console.error("New Manifest :");
-                        console.error(drivers[index].manifest);
+                        // console.error("Old Manifest length: " + oldManifest.length);
+                        // console.error("New Manifest Length: " + drivers[index].manifest.length);
+                        // console.error("New Manifest :");
+                        // console.error(drivers[index].manifest);
                       }else{
                         console.error('Did not find driver index to pull from: ' + index);
                       }
@@ -910,4 +929,8 @@ contractors = [
   { driverNumber : '271881', name : 'Joe CEBALLOS'},
   { driverNumber : '272105', name : 'Sadan SYLLA'},
   { driverNumber : '272246', name : 'Angela MOSLEY'},
+  { driverNumber : '272595', name : 'Maykelin PEROZO'},
+  { driverNumber : '272612', name : 'Shiquita JAMES'},
+  { driverNumber : '272883', name : 'Briana HARPER'},
+  { driverNumber : '272950', name : 'Tiffany SWANSON'},
 ]
