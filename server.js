@@ -16,6 +16,7 @@ const mongoose = require("mongoose");
 
 const APP_DIRECTORY = !(SERVER) ? "" : ((process.env.APP_DIRECTORY) ? (process.env.APP_DIRECTORY) : "" );
 const EMAILUSER = process.env.EMAILUSER;
+const TESTMAIL = process.env.TESTMAIL;
 const EMAILPASS = process.env.EMAILPASS;
 const TEMP_FILEPATH = (process.env.TEMP_FILEPATH ? process.env.TEMP_FILEPATH : 'tmp/');
 const tempFilePath = TEMP_FILEPATH;
@@ -165,7 +166,7 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                 // console.log(splitAddress.includes(" US"));
                 // console.log(splitAddress);
                 // if (options.extractFor === "roadWarrior" || options.extractFor === "route4me") {
-                  console.log(splitAddress.length, " - ", splitAddress);
+                  // console.log(splitAddress.length, " - ", splitAddress);
                     if (splitAddress.length > 5) {
                         let country = (splitAddress[5] + "").trim();
                         let countryProcessed = "";
@@ -181,11 +182,11 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                         || tentativeApt.toLowerCase().includes("room")
                         || tentativeApt.length < 5
                         ){
-                          console.log("apt string: ", tentativeApt);
-                          console.log("apartment: ", true);
+                          // console.log("apt string: ", tentativeApt);
+                          // console.log("apartment: ", true);
                           street = (splitAddress[2] + "").trim() + ", " + tentativeApt;
                         }else{
-                          console.log("apartment : ",false);
+                          // console.log("apartment : ",false);
                          street = tentativeApt+ ", " + (splitAddress[2] + "").trim() ;
                        }
 
@@ -201,29 +202,28 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                         }
 
                         jsonAddress = {
-                        brand: brandName,
-                        barcode: (parsedJSON.data[i][0]).trim(),
-                        lastScan: (parsedJSON.data[i][1]).trim(),
-                        isPriority: await isPriority(brandName),
-                        name: name,//((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
-                        // apt:(splitAddress[1]+"").trim(),
-                        street: street,// (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim(),
-                        city: city, //(splitAddress[3] + "").trim(),
-                        state: (splitAddress[4] + "").trim(),
-                        country: countryProcessed,
-                    
+                          brand: brandName,
+                          barcode: (parsedJSON.data[i][0]).trim(),
+                          lastScan: (parsedJSON.data[i][1]).trim(),
+                          isPriority: await isPriority(brandName),
+                          name: name,//((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
+                          // apt:(splitAddress[1]+"").trim(),
+                          street: street,// (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim(),
+                          city: city, //(splitAddress[3] + "").trim(),
+                          state: (splitAddress[4] + "").trim(),
+                          country: countryProcessed,
                         }
                     } else {
                         jsonAddress = {
-                        brand: brandName,
-                        barcode: (parsedJSON.data[i][0]).trim(),
-                        lastScan: (parsedJSON.data[i][1]).trim(),
-                        isPriority: await isPriority(brandName),
-                        name: ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
-                        street: (splitAddress[1] + "").trim(),
-                        city: (splitAddress[2] + "").trim(),
-                        state: (splitAddress[3] + "").trim(),
-                        country: (splitAddress[4] + "").trim(),
+                          brand: brandName,
+                          barcode: (parsedJSON.data[i][0]).trim(),
+                          lastScan: (parsedJSON.data[i][1]).trim(),
+                          isPriority: await isPriority(brandName),
+                          name: ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
+                          street: (splitAddress[1] + "").trim(),
+                          city: (splitAddress[2] + "").trim(),
+                          state: (splitAddress[3] + "").trim(),
+                          country: (splitAddress[4] + "").trim(),
                         }
                     }
                 // }
@@ -232,29 +232,39 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                   foundBarcode = await allBarcodeCache.find((bc) => bc._id === jsonAddress.barcode )
                   if(foundBarcode){
                     console.error("Found Existing Barcode: " , foundBarcode._id , " Under: " ,  foundBarcode.drivers);
-                    for await(const driver of foundBarcode.drivers){
-                      const index = drivers.findIndex(i => i.driverNumber === driver.driverNumber);
-                      if(index !== -1){
-                        //found the driver to pull from
-                        console.error('found the driver index to pull from: ' + index);
-                        //modifying passed driver manifest
-                        oldManifest = drivers[index].manifest;
-                        drivers[index].manifest = await oldManifest.filter((item) => item.barcode !== foundBarcode._id); 
-                        console.error("Driver Number");
-                        // console.error("Old Manifest length: " + oldManifest.length);
-                        // console.error("New Manifest Length: " + drivers[index].manifest.length);
-                        // console.error("New Manifest :");
-                        // console.error(drivers[index].manifest);
-                      }else{
-                        console.error('Did not find driver index to pull from: ' + index);
+                    // if(jsonAddress.lastScan === 'Delivered' || jsonAddress.lastScan === 'Attempted' || jsonAddress.lastScan === 'Loaded'){
+                    if(jsonAddress.lastScan === 'Delivered' || jsonAddress.lastScan === 'Attempted' || jsonAddress.lastScan === 'Loaded'){
+                      for await(const driver of foundBarcode.drivers){
+                        const index = drivers.findIndex(i => i.driverNumber === driver.driverNumber);
+                        if(index !== -1){
+                          //found the driver to pull from
+                          console.error('found the driver index to pull from: ' + index);
+                          //modifying passed driver manifest
+                          oldManifest = drivers[index].manifest;
+                          drivers[index].manifest = await oldManifest.filter((item) => item.barcode !== foundBarcode._id); 
+                          // console.error("Driver Number");
+                          // console.error("Old Manifest length: " + oldManifest.length);
+                          // console.error("New Manifest Length: " + drivers[index].manifest.length);
+                          // console.error("New Manifest :");
+                          // console.error(drivers[index].manifest);
+                        }else{
+                          console.error('Did not find driver index to pull from: ' + index);
+                        }
                       }
+                      console.log(jsonAddress.name, " ", jsonAddress.street, " : ", jsonAddress.lastScan);
+                      console.log("The above from drivers");
+                      const barcodeIndex = allBarcodeCache.findIndex((bc) => bc._id === jsonAddress.barcode);
+                      allBarcodeCache[barcodeIndex].drivers.push({driverNumber:driverNumber, lastModified:date});
+                      arrayOfAddress.push(jsonAddress);
+                    }else{
+                      // dont add to manifest cos it is likely not loaded
+                      console.log("Not adding to manifest cos already has a lastScan in someonelses and you have no scan on it");
+                      console.log(jsonAddress.name, " ", jsonAddress.street, " : ", jsonAddress.lastScan);
                     }
-                    const barcodeIndex = allBarcodeCache.findIndex((bc) => bc._id === jsonAddress.barcode);
-                    allBarcodeCache[barcodeIndex].drivers.push({driverNumber:driverNumber, lastModified:date});
                   }else{
                     allBarcodeCache.push({_id:jsonAddress.barcode, drivers:[{driverNumber:driverNumber, lastModified:date}]});
+                    arrayOfAddress.push(jsonAddress);
                   }
-                  arrayOfAddress.push(jsonAddress);
                 // }
 
                 // console.log("Objects " + parsedJSON.data.length);
@@ -564,6 +574,8 @@ async function mergeManifest(oldManifest, manifest){
 
 const main = async () => {
     // Wait until client connects and authorizes
+    // console.log(TESTMAIL);
+    // console.log(EMAILPASS);
     try {
       client = new ImapFlow({
           host: 'triumphcourier.com',
