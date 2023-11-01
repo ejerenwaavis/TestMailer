@@ -6,12 +6,12 @@ if (!SERVER){
 const express = require("express");
 const app = express();
 const fs = require("fs");
-const { promisify } = require('util');
+// const { promisify } = require('util');
 const ejs = require("ejs");
 const papa = require("papaparse");
 const bodyParser = require("body-parser")
 const Excel = require('exceljs');
-const formidable = require('formidable');
+// const formidable = require('formidable');
 const mongoose = require("mongoose");
 
 const APP_DIRECTORY = !(SERVER) ? "" : ((process.env.APP_DIRECTORY) ? (process.env.APP_DIRECTORY) : "" );
@@ -62,6 +62,35 @@ const Report = reportConn.model("Report", reportSchema);
 
 
 
+
+const driverReportSchema = new mongoose.Schema({
+    _id: String, // driverNumber-date
+    date: {type:Date, default: new Date().setHours(0,0,0,0)},
+    driverNumber: Number,
+    driverName: String, 
+    driverAllias: String, 
+    manifest:[{
+        brand: String,
+        barcode: String,
+        isPriority: Boolean,
+        lastScan: String,
+        Events: {type:{}, default:null},
+        name: String,
+        street: String,
+        city: String,
+        state: String,
+        country: String,
+    }],
+    lastUpdated: {type:Date, default:null},
+});
+const DriverReport = reportConn.model("DriverReport", driverReportSchema);
+var driverReports;
+
+
+
+
+
+
 // Mongoose Brands DB Connection Setup
 const brandDB = "mongodb+srv://" + MONGOUSER + ":" + MONGOPASSWORD + MONGOURI2;
 const brandConn = mongoose.createConnection(brandDB, {
@@ -105,7 +134,8 @@ app.route(APP_DIRECTORY + "/extract")
     // console.error(new Date().toLocaleString() + " >> Request Object: ");
     // let strReq = await stringify(req);
     try{
-      let response = await main();
+      let response = await bulkItemizedReportPull();
+      console.log(response);
       if(response){
         res.send(response);
       }else{
@@ -132,74 +162,68 @@ app.listen(process.env.PORT || 3055, function () {
 // Replace this function with your own logic to process CSV files
 async function processCsvAttachment(fileContent, oldDrivers, driverNumber, emailDate) {
     //   console.log(`Found CSV attachment: ${fileName}`);
+    // console.error(outputDate() + " Processing Extractions CSV's");
+
     let drivers = oldDrivers
     let parsedJSON = papa.parse(fileContent);
     let arrayOfAddress = [];
     let errors = [];
     let totalRecords = 0;
     let date = new Date(emailDate);
-
-
     for (let i = 1; i < parsedJSON.data.length; i++) {
-          totalRecords++;
-          let jsonAddress = {};
-          jsonAddress.Barcode = (parsedJSON.data[i][0]).trim();
-          let brand = await allBrands.filter( (foundBrand) => { return (foundBrand.trackingPrefixes.includes(jsonAddress.Barcode.substring(0,7))) })
-          let brandName = (brand === undefined || brand.length == 0)? "## Unregistered Brand ##" : brand[0]._id;
+      totalRecords++;
+      let jsonAddress = {};
+      jsonAddress.Barcode = parsedJSON.data[i][0].trim();
+      let brand = await allBrands.filter( (foundBrand) => { return (foundBrand.trackingPrefixes.includes(jsonAddress.Barcode.substring(0,7))) })
+      let brandName = (brand === undefined || brand.length == 0)? "## Unregistered Brand ##" : brand[0]._id;
+      isPriorityPackage = await isPriority(brandName);
+      // jsonAddress.isPriority = await isPriority(brandName);
+      
+      if (jsonAddress.Barcode) { // allow for all stops scanned and unscanned
+          tempSplitAddress = (parsedJSON.data[i][3] + "").split(".");
+          let splitAddress;
+          if (tempSplitAddress.includes(" US")) {
+            splitAddress = tempSplitAddress;
+          } else {
+            tempSplitAddress.push(" US");
+            // console.log(tempSplitAddress);
+            splitAddress = tempSplitAddress;
+          }
           
-          // console.log("*****");
-          // console.log(options);
-          // console.log(parsedJSON.data[i][1]);
-          // console.log("*****");
-            if (jsonAddress.Barcode) {
-              //   if (parsedJSON.data[i][1] === options.loaded || parsedJSON.data[i][1] === options.attempted || parsedJSON.data[i][1] === options.delivered) {
-            // jsonAddress.lastScan = parsedJSON.data[i][1];
-                tempSplitAddress = (parsedJSON.data[i][3] + "").split(".");
-                let splitAddress;
-                if (tempSplitAddress.includes(" US")) {
-                  splitAddress = tempSplitAddress;
-                } else {
-                  tempSplitAddress.push(" US");
-                  // console.log(tempSplitAddress);
-                  splitAddress = tempSplitAddress;
+          if (splitAddress.length > 5) {
+              let country = (splitAddress[5] + "").trim();
+              let countryProcessed = "";
+              let name = ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A";
+              let street = (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim();
+              let tentativeApt = (splitAddress[1] + "").trim();
+                if(tentativeApt.toLowerCase().includes("unit") 
+                || tentativeApt.toLowerCase().includes("apt ") 
+                || tentativeApt.toLowerCase().includes("apartment")
+                || tentativeApt.toLowerCase().includes("suite")
+                || tentativeApt.toLowerCase().includes("ste")
+                || tentativeApt.toLowerCase().includes("rm")
+                || tentativeApt.toLowerCase().includes("room")
+                || tentativeApt.length < 5
+                ){
+                  // console.log("apt string: ", tentativeApt);
+                  // console.log("apartment: ", true);
+                  street = (splitAddress[2] + "").trim() + ", " + tentativeApt;
+                }else{
+                  // console.log("apartment : ",false);
+                  street = tentativeApt+ ", " + (splitAddress[2] + "").trim() ;
                 }
-                // console.log(splitAddress.includes(" US"));
-                // console.log(splitAddress);
-                // if (options.extractFor === "roadWarrior" || options.extractFor === "route4me") {
-                  // console.log(splitAddress.length, " - ", splitAddress);
-                    if (splitAddress.length > 5) {
-                        let country = (splitAddress[5] + "").trim();
-                        let countryProcessed = "";
-                        let name = ((splitAddress[0] + "").trim()) ? splitAddress[0].trim() : "N/A";
-                        let street = "";
-                        let tentativeApt = (splitAddress[1] + "").trim();
-                        if(tentativeApt.toLowerCase().includes("unit") 
-                        || tentativeApt.toLowerCase().includes("apt ") 
-                        || tentativeApt.toLowerCase().includes("apartment")
-                        || tentativeApt.toLowerCase().includes("suite")
-                        || tentativeApt.toLowerCase().includes("ste")
-                        || tentativeApt.toLowerCase().includes("rm")
-                        || tentativeApt.toLowerCase().includes("room")
-                        || tentativeApt.length < 5
-                        ){
-                          // console.log("apt string: ", tentativeApt);
-                          // console.log("apartment: ", true);
-                          street = (splitAddress[2] + "").trim() + ", " + tentativeApt;
-                        }else{
-                          // console.log("apartment : ",false);
-                         street = tentativeApt+ ", " + (splitAddress[2] + "").trim() ;
-                       }
-
-                        let city = (splitAddress[3] + "").trim();
-                        try{
-                            if (country != "UNDEFINED") {
-                                countryProcessed = (country.length > 3) ? country.split(" ")[0][0] + country.split(" ")[1][0] : country;
-                        }
-                        }catch(error){
-                            // console.log("errors where found at " + (i + 3));
-                            errors.push({name:name, line: (i+1), fullAddress: street + " " +city});
-                            // console.log(populateErrors);
-                        }
+              let city = (splitAddress[3] + "").trim();
+              try{
+                  if (country != "UNDEFINED") {
+                      countryProcessed = (country.length > 3) ? country.split(" ")[0][0] + country.split(" ")[1][0] : country;
+          
+                      // console.log(JSON.stringify(address));
+                  }
+              }catch(error){
+                  // console.log("errors where found at " + (i + 3));
+                  errors.push({name:name, line: (i+1), fullAddress: street + " " +city});
+                  // console.log(populateErrors);
+              }
 
                         jsonAddress = {
                           brand: brandName,
@@ -259,7 +283,7 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                     }else{
                       // dont add to manifest cos it is likely not loaded
                       console.log("Not adding to manifest cos already has a lastScan in someonelses and you have no scan on it");
-                      console.log(jsonAddress.name, " ", jsonAddress.street, " : ", jsonAddress.lastScan);
+                      // console.log(jsonAddress.name, " ", jsonAddress.street, " : ", jsonAddress.lastScan);
                     }
                   }else{
                     allBarcodeCache.push({_id:jsonAddress.barcode, drivers:[{driverNumber:driverNumber, lastModified:date}]});
@@ -291,17 +315,18 @@ async function extractCsvAttachments(data) {
     drivers = [];
     driverList = [];
     
-    console.error(outputDate() + "----EMAILS FROM EXTRACT CSV ATT. ---");
-    for await (const em of emails) {
-      console.error("Email Seq#: "+em.seq + ", From: "+ em.envelope.from[0].name + " | email: " + em.envelope.from[0].address);
-    };
-    console.error("----END OF EMAILS PRINT FROM EXTRACT CSV ATT. ---");
+    console.error(outputDate() + " Extracting CSV's");
+    // for await (const em of emails) {
+    //   console.error("Email Seq#: "+em.seq + ", From: "+ em.envelope.from[0].name + " | email: " + em.envelope.from[0].address);
+    // };
+    // console.error("----END OF EMAILS PRINT FROM EXTRACT CSV ATT. ---");
     for await (const email of emails) {
       // Check if the attachment is a CSV file
       // console.log("\n*** ParsedEmail ***");
       let attachments = email.parsedEmail.attachments; // New Attachment process Handles multiple attachements
       let emailDate = email.parsedEmail.date; // New Attachment process Handles multiple attachements
-      console.error(emailDate);
+      let subject = email.parsedEmail.subject;
+      // console.error(emailDate);
       for await(const attachment of attachments){
         if (attachment.contentType === 'text/csv' || attachment.contentType === 'text/comma-separated-values') {
           const fileName = attachment.filename;
@@ -313,10 +338,12 @@ async function extractCsvAttachments(data) {
             drivers = processingResult.drivers;
             let manifest = processingResult.manifest;
             
+            //check if an existing driver exists
             let driverSearch = drivers.filter((d) => d.driverNumber === driverNumber );
             if(driverSearch.length > 0){
-              console.error("Duplicate Driver Found at " + emails.indexOf(email) + " "+ driverSearch[0].driverNumber);
+              // console.error("Duplicate Driver Found at " + emails.indexOf(email) + " "+ driverSearch[0].driverNumber);
               // console.log(driverSearch);
+              //merge old and new manifest together
               let existingManifest = driverSearch[0].manifest;
               let mergedManifests = await mergeManifest(existingManifest, manifest);
               if(mergedManifests){
@@ -331,7 +358,15 @@ async function extractCsvAttachments(data) {
             }else{
               driverName = await getDriverName(driverNumber);
               driverList.push(driverName.name);
-              drivers.push({driverNumber:driverNumber, manifest:manifest})
+              drivers.push({
+                _id: driverName.driverNumber + "-" + today.getTime(), // driverNumber-date
+                date: today,
+                driverNumber: driverName.driverNumber, 
+                driverName: driverName.name, 
+                driverAllias: (subject ? subject : email.envelope.from[0].name), 
+                manifest:manifest,
+                lastUpdated: null,
+              })
             }
             // return true;
         }else{
@@ -340,13 +375,32 @@ async function extractCsvAttachments(data) {
         }
       }
     }
-    reportDoc = {_id:today, date:today, drivers:drivers};
-    let saveCacheStatus = await saveBarcodeCache();
-    let status = await saveReport(reportDoc);
-    if (status){
-      return {successfull:true, message:"Manfest Extraction Completed", errors:errors, driverCount:drivers.length, drivers:driverList};
+    // reportDoc = {_id:today, date:today, drivers:drivers}; // OldReportDoc Creation to be commented out
+    // let saveCacheStatus = await saveBarcodeCache();
+    // let status = await saveReport(reportDoc); // // OldReportDoc Saving to be commented out
+    let result = {errors:errors, insertedDocs:[], modifications:[]};
+    for await (const driver of drivers){
+      try{
+        res = await insertNewStopsIfNotExist(driver);
+        result.modifications = [...result.modifications, ... res.modifications];
+        result.insertedDocs = [...result.insertedDocs, ... res.insertedDocs];
+        result.errors = [...result.errors, ...res.errors];
+      }catch (err){
+        result.errors.push(err)
+        console.log(err);
+      }
+    }
+    console.log("end of processing");
+    console.log(result);
+    // let result = await //saveBulkItemizedReport(drivers); // New Individualized Saving
+
+    if (result){
+      console.log("Result has no errors");
+      return {successfull:true, message:"Manfest Extraction Completed", errors:result.errors, driverCount:drivers.length, drivers:driverList};
     }else{
-      return {successfull:false, message:"Failed to Extract/Save Report", errors:errors, driverCount:drivers.length, drivers:driverList};
+      // console.log("Errors Found");
+      // console.log(result.errors.toString());
+      return {successfull:false, message:"Failed to Extract/Save Report", errors:result.errors, driverCount:drivers.length, drivers:driverList};
     }
 }
 
@@ -435,6 +489,48 @@ async function saveReport(reportDoc){
     }
 }
 
+
+async function saveBulkItemizedReport(drs){
+    let drivers = drs;
+    try{
+      result = await DriverReport.insertMany(drivers, {ordered:true});
+      console.log(Object.getOwnPropertyNames(result));
+      console.log(error.insertedDocs);
+      return {result:result};
+    }catch(error){
+      console.log("\nResult");
+      console.log(error.result);
+      console.log("\nInserted Docs");
+      console.log(error.insertedDocs);
+      if(error.message.includes("duplicate key error")){
+        console.log("main report already pulled, start individual process");
+        if(error.insertedDocs.length > 0){
+          for await(const doc of error.insertedDocs){
+            console.log(doc._id);
+            drivers = drivers.filter(d => d._id !== doc._id);
+          }
+          console.log("Now find a way to save these remainig ones");
+          console.log(drivers.length);
+          for await(const driver of drivers){
+           result = await insertNewStopsIfNotExist(driver);
+           console.log('done processing new stops');
+          }
+          //functoin to save individual updates here
+        }else{
+          for await(const driver of drivers){
+           result = await insertNewStopsIfNotExist(driver);
+           console.log('done processing new stops');
+          }
+        }
+      }
+      // console.log(Object.getOwnPropertyNames(error));
+      // 'stack', 'message', 'code', 'writeErrors', 'result', 'insertedDocs'
+      return {error:error};
+    }
+    
+}
+
+
 async function saveBarcodeCache(){
     err = await BarcodeCache.deleteMany({});
       if (err) {
@@ -469,6 +565,109 @@ async function insertDriverDoc(reportID, driver){
     }
   );
 }
+
+async function insertNewStopsIfNotExist(driver){ 
+  // inserts new stops to the driver if already exists otherwise inserts a new driver document
+  existingDoc = await driverReportExists(driver._id);
+  let result = {errors:[], insertedDocs:[], modifications:[]}
+  let cacheModifications = [];
+  if(existingDoc){
+    for await (const stop of driver.manifest){
+      //check if the stop exisits in mongo database
+      if(!(existingDoc.manifest.some(s => s.barcode === stop.barcode))){
+        console.log("stop does not exist ...subtract first and then add");
+        oldStopOwners = await DriverReport.find({ 'manifest': { $elemMatch: { barcode: stop.barcode } }});
+        if(oldStopOwners){
+          console.log("Found Old Owner");
+          console.log("Pulling stop");
+          for await(const oldStopOwner of oldStopOwners){
+            console.log("old manifest length: " + oldStopOwner.manifest.length);
+            oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
+            console.log("new manifest length: " + oldStopOwner.manifest.length);
+            saveResult = await oldStopOwner.save();
+            if(saveResult){
+              console.log("SAVED OLD OWNER SUCCESSFULLY");
+              cacheModifications.push({driverName:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted'})
+              existingDoc.manifest.push(stop);
+            }else{
+              result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
+              console.log("Error SAving OWNER SUCCESSFULLY");
+            }
+          }
+        }else{
+          console.log("No Old Owner");
+          cacheModifications.push({driverName:existingDoc.driverName, stopBarcode: stop.barcode, operation:'merged'});
+          existingDoc.manifest.push(stop);
+        }
+      }else{
+        // console.log("stop Already exisist....skiping");
+      }
+    }
+    let saveExistingDocResult = await existingDoc.save();
+    if(saveExistingDocResult){
+      // console.log("ALL GOOD for EXISTING DOC???");
+      result.modifications = cacheModifications;
+      // console.log(saveExistingDocResult);
+    }else{
+      console.log("Some erros occured saving existing doc???");
+      // console.log(saveExistingDocResult);
+    }
+  }else{
+    // console.log(existingDoc);
+    // console.log("Driver Does NOT Exists");
+    // check if driiver stops exists elsewhere and pull them
+    for await(const stop of driver.manifest){
+      oldStopOwners = await DriverReport.find({date:driver.date, 'manifest': { $elemMatch: { barcode: stop.barcode } }});
+      if(oldStopOwners){
+        // console.log("Found Old Owner - ELSE BLOCK");
+        // console.log("Pulling stop - ELSE BLOCK");
+        for await(const oldStopOwner of oldStopOwners){
+          console.log("old manifest length: " + oldStopOwner.manifest.length);
+          oldStop = await oldStopOwner.manifest.find(os => os.barcode === stop.barcode);
+          oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
+          driverStopIndex = await driver.manifest.findIndex(os => os.barcode !== stop.barcode);
+          if(driverStopIndex != -1){
+            driver.manifest[driverStopIndex] = oldStop;
+          }else{
+            driver.manifest.push(oldStop);
+          }
+          console.log("new manifest length: " + oldStopOwner.manifest.length);
+          saveResult = await oldStopOwner.save();
+          if(saveResult){
+            console.log("SAVED OLD OWNER SUCCESSFULLY IN ELSE BLOCK");
+            cacheModifications.push({oldOwner:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted', newStopOwner:driver.driverName})
+            // existingDoc.manifest.push(stop);
+          }else{
+            result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
+            console.log("Error SAving OWNER SUCCESSFULLY");
+          }
+        }
+      }else{
+        console.log("No Old Owner");
+      }
+    }
+    try{
+      let newDriverReport = new DriverReport(driver);
+      newSaveResult = await newDriverReport.save();
+      if(newSaveResult){
+        result.insertedDocs.push({driverName:driver.driverName, operation:'instered new Driver'})
+        // console.log('saved New Driver successfully');
+      }else{
+        result.errors.push({msg:"Error Saving New Driver", driverName:driver.driverName});
+        // console.log('Failed to save NEW DriverReport ');
+      }
+    }catch(err){
+      console.log("ERROR IN ELSE DRIVER SAVE");
+      result.errors.push({msg:err.msg, driverName:driver.driverName})
+    }
+    
+  }
+
+
+    
+  return result;
+}
+
 
 async function insertNewStops(reportID, driverNumber, newStops){
 
@@ -509,6 +708,11 @@ async function deleteReport(report){
 
 async function reportDocExists(report){
   exist = await Report.exists({_id:report._id});
+  return exist;
+};
+
+async function driverReportExists(driverReportID){
+  exist = await DriverReport.findOne({_id:driverReportID});
   return exist;
 };
 
@@ -559,12 +763,12 @@ async function mergeManifest(oldManifest, manifest){
     }else{
       // Check if the element was found
         // Manipulate the element (for example, multiply it by 2)
-        console.error("Last Scan Before manipulation:", existingStop.lastScan);
+        // console.error("Last Scan Before manipulation:", existingStop.lastScan);
         existingStop.lastScan = stop.lastScan;
 
         // Update the array with the manipulated value
         finalManifest[stopIndex] = existingStop;
-        console.error("Last Scan after manipulation:", existingStop.lastScan);
+        // console.error("Last Scan after manipulation:", existingStop.lastScan);
     }
   }
   return finalManifest;
@@ -596,9 +800,9 @@ const main = async () => {
       // Select and lock a mailbox. Throws if mailbox does not exist
       let lock = await client.getMailboxLock('INBOX');
         const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
-        console.error(outputDate() + "----EMAILS FETCH BELOW---");
-        console.error(emails);
-        console.error("----END OF EMAILS---");
+        // console.error(outputDate() + "----EMAILS FETCH BELOW---");
+        // console.error(emails);
+        // console.error("----END OF EMAILS---");
         
         let todaysEmails = [];
         let errors = [];
@@ -608,7 +812,8 @@ const main = async () => {
         for await (const email of emails) {
             let isTodayMail = await isToday(new Date(email.envelope.date));
             if(isTodayMail){
-                console.error("Found Email: ");
+                console.error('properties of email');
+                console.error(Object.getOwnPropertyNames(email));
 
                 email.parsedEmail = await simpleParser(email.source);
                 let attachments = email.parsedEmail.attachments; 
@@ -663,6 +868,110 @@ const main = async () => {
       }
       
 };
+
+
+const bulkItemizedReportPull = async () => {
+    // Wait until client connects and authorizes
+    try {
+      client = new ImapFlow({
+          host: 'triumphcourier.com',
+          port: 993,
+          secure: true,
+          auth: {
+              user: EMAILUSER,
+              pass: EMAILPASS
+          }
+      });
+      await client.connect();
+
+
+
+
+
+      console.error("connected to mail server");
+      // Select and lock a mailbox. Throws if mailbox does not exist
+      let lock = await client.getMailboxLock('INBOX');
+        const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
+        // console.error(outputDate() + "----EMAILS FETCH BELOW---");
+        // console.error(emails);
+        // console.error("----END OF EMAILS---");
+        
+        let todaysEmails = [];
+        let errors = [];
+        let driverList = [];
+        // console.error("Email Count: "+ emails.length);
+        
+        for await (const email of emails) {
+            let isTodayMail = await isToday(new Date(email.envelope.date));
+            if(isTodayMail){
+                // console.error("Found Email: ");
+
+                // console.error('email flags');
+                // console.error(email.flags);
+                // console.error(Object.getOwnPropertyNames(email));
+
+                email.parsedEmail = await simpleParser(email.source);
+                let attachments = email.parsedEmail.attachments; 
+                for await(const attachment of attachments){
+                  let fileName = attachment.filename;
+                  let todaysManifest = await isTodaysManifest(fileName);
+                  let validFileName = await isValidFileName(fileName);
+                  if(validFileName){
+                    if(todaysManifest){
+                      todaysEmails.push(email);
+                    }else{
+                      errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Outdated Manifest"});
+                      // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' ");
+                    }
+                  }else if(attachment.contentType.includes("zip")){
+                    errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Invalid File Type"});
+                  }else{
+                    errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Mutilated/Invalid FileName or FileType"});
+                    // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' 
+                  }
+                }
+            }
+        }
+        if (todaysEmails.length > 0){
+            console.error(outputDate() + "Manifest Extraction Started...");
+            let result = await extractCsvAttachments({todayEmails:todaysEmails,errors:errors});
+            // console.log("Result Object After extractprocess");
+            // console.log(result);
+            if(result.successfull){
+                console.log('extraction and upload completed');
+                return result
+            }else{
+                console.log('extraction and upload completed with errors');
+                return result
+            }
+        }else{
+          console.error("No New Data for Today");
+          // console.error("FInishing and Exiting Mail Connection");
+          return ({successfull: true, msg: 'No New Data for Today'});
+        }
+    } catch(error){
+      console.error(outputDate()  + "  Caught an Error in 'MAIN' function");
+      console.error(error);
+  
+      return ({successfull: false, msg:'Encountered an internal processing Error', error:errors});
+
+    }finally {
+        // Make sure lock is released, otherwise next `getMailboxLock()` never returns
+        try{
+          lock.release();
+          // log out and close connection
+          await client.logout();
+        }catch(error){
+          console.error("Caught errors trying to close the connection");
+          // return ({successfull: false, msg:'Closing Error ', error:error})
+        }
+      }
+      
+};
+
+
+
+
 
 //Stringify handles some characters that will cause erroes when passing to a reuest JSON object to string
 async function stringify(obj) {
