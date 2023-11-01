@@ -83,7 +83,7 @@ const driverReportSchema = new mongoose.Schema({
     }],
     lastUpdated: {type:Date, default:null},
 });
-const DriverReport = reportConn.model("DriverReport", driverReportSchema);
+const DriverReport = reportConn.model("DevDriverReport", driverReportSchema);
 var driverReports;
 
 
@@ -255,14 +255,14 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                 // if (jsonAddress.Name != "undefined" && jsonAddress.Name != " Unknown name") {
                   foundBarcode = await allBarcodeCache.find((bc) => bc._id === jsonAddress.barcode )
                   if(foundBarcode){
-                    console.error("Found Existing Barcode: " , foundBarcode._id , " Under: " ,  foundBarcode.drivers);
+                    // console.error("Found Existing Barcode: " , foundBarcode._id , " Under: " ,  foundBarcode.drivers);
                     // if(jsonAddress.lastScan === 'Delivered' || jsonAddress.lastScan === 'Attempted' || jsonAddress.lastScan === 'Loaded'){
                     if(jsonAddress.lastScan === 'Delivered' || jsonAddress.lastScan === 'Attempted' || jsonAddress.lastScan === 'Loaded'){
                       for await(const driver of foundBarcode.drivers){
                         const index = drivers.findIndex(i => i.driverNumber === driver.driverNumber);
                         if(index !== -1){
                           //found the driver to pull from
-                          console.error('found the driver index to pull from: ' + index);
+                          // console.error('found the driver index to pull from: ' + index);
                           //modifying passed driver manifest
                           oldManifest = drivers[index].manifest;
                           drivers[index].manifest = await oldManifest.filter((item) => item.barcode !== foundBarcode._id); 
@@ -275,8 +275,8 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                           console.error('Did not find driver index to pull from: ' + index);
                         }
                       }
-                      console.log(jsonAddress.name, " ", jsonAddress.street, " : ", jsonAddress.lastScan);
-                      console.log("The above from drivers");
+                      // console.log(jsonAddress.name, " ", jsonAddress.street, " : ", jsonAddress.lastScan);
+                      // console.log("The above from drivers");
                       const barcodeIndex = allBarcodeCache.findIndex((bc) => bc._id === jsonAddress.barcode);
                       allBarcodeCache[barcodeIndex].drivers.push({driverNumber:driverNumber, lastModified:date});
                       arrayOfAddress.push(jsonAddress);
@@ -390,8 +390,8 @@ async function extractCsvAttachments(data) {
         console.log(err);
       }
     }
-    console.log("end of processing");
-    console.log(result);
+    // console.log("end of processing");
+    // console.log(result);
     // let result = await //saveBulkItemizedReport(drivers); // New Individualized Saving
 
     if (result){
@@ -634,12 +634,12 @@ async function insertNewStopsIfNotExist(driver){
           console.log("new manifest length: " + oldStopOwner.manifest.length);
           saveResult = await oldStopOwner.save();
           if(saveResult){
-            console.log("SAVED OLD OWNER SUCCESSFULLY IN ELSE BLOCK");
+            // console.log("SAVED OLD OWNER SUCCESSFULLY IN ELSE BLOCK");
             cacheModifications.push({oldOwner:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted', newStopOwner:driver.driverName})
             // existingDoc.manifest.push(stop);
           }else{
             result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
-            console.log("Error SAving OWNER SUCCESSFULLY");
+            // console.log("Error SAving OWNER SUCCESSFULLY");
           }
         }
       }else{
