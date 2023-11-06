@@ -83,7 +83,7 @@ const driverReportSchema = new mongoose.Schema({
     }],
     lastUpdated: {type:Date, default:null},
 });
-const DriverReport = reportConn.model("DevDriverReport", driverReportSchema);
+const DriverReport = reportConn.model("DriverReport", driverReportSchema);
 var driverReports;
 
 
@@ -581,9 +581,9 @@ async function insertNewStopsIfNotExist(driver){
           console.log("Found Old Owner");
           console.log("Pulling stop");
           for await(const oldStopOwner of oldStopOwners){
-            console.log("old manifest length: " + oldStopOwner.manifest.length);
+            // console.log("old manifest length: " + oldStopOwner.manifest.length);
             oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
-            console.log("new manifest length: " + oldStopOwner.manifest.length);
+            // console.log("new manifest length: " + oldStopOwner.manifest.length);
             saveResult = await oldStopOwner.save();
             if(saveResult){
               console.log("SAVED OLD OWNER SUCCESSFULLY");
@@ -622,7 +622,7 @@ async function insertNewStopsIfNotExist(driver){
         // console.log("Found Old Owner - ELSE BLOCK");
         // console.log("Pulling stop - ELSE BLOCK");
         for await(const oldStopOwner of oldStopOwners){
-          console.log("old manifest length: " + oldStopOwner.manifest.length);
+          // console.log("old manifest length: " + oldStopOwner.manifest.length);
           oldStop = await oldStopOwner.manifest.find(os => os.barcode === stop.barcode);
           oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
           driverStopIndex = await driver.manifest.findIndex(os => os.barcode !== stop.barcode);
@@ -631,7 +631,7 @@ async function insertNewStopsIfNotExist(driver){
           }else{
             driver.manifest.push(oldStop);
           }
-          console.log("new manifest length: " + oldStopOwner.manifest.length);
+          // console.log("new manifest length: " + oldStopOwner.manifest.length);
           saveResult = await oldStopOwner.save();
           if(saveResult){
             // console.log("SAVED OLD OWNER SUCCESSFULLY IN ELSE BLOCK");
@@ -658,13 +658,12 @@ async function insertNewStopsIfNotExist(driver){
       }
     }catch(err){
       console.log("ERROR IN ELSE DRIVER SAVE");
-      result.errors.push({msg:err.msg, driverName:driver.driverName})
+      let e = {msg:err.msg, driverName:driver.driverName};
+      console.log(e);
+      result.errors.push(e)
     }
     
-  }
-
-
-    
+  }    
   return result;
 }
 
