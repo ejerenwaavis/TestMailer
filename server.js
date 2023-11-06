@@ -404,91 +404,6 @@ async function extractCsvAttachments(data) {
     }
 }
 
-async function saveReport(reportDoc){
-    let report = new Report(reportDoc);
-    reportExists = await reportDocExists(report);
-    // console.log(reportExists);
-    if(reportExists){
-      let result = await deleteReport(report);
-      if(result.deletedCount>0){
-        let status = await report.save();
-        // console.log(status);
-        if(status){
-          return true;
-        }else{
-          return false;
-        }
-      }else{
-        return false;
-      }
-
-      // itereate though the report and check for drivers that dont exists
-      /*
-        let drivers = report.drivers;
-        for await(const driver of drivers){
-          driverExists = await driverDocExists(report._id, driver);
-          // if drivers don't exists, insert the new driver object
-          if(!driverExists){
-            //insert new driver document
-            result = await insertDriverDoc(report._id, driver);
-            if(result.successfull){
-              console.error(result.doc);
-            }else{
-              console.error(result.msg);
-            }
-          }else{
-            let newStops = [];
-            // if driver already exists, iterate through manifest and check for barcodes that dont exists 
-            stops = driver.manifest;
-            // console.log(stops);
-            for await(const stop of stops){
-              barcode = stop.barcode
-              result = await driverHasPackage(report._id, driver.driverNumber, barcode); // returns new barcodes that dont exist in driver's manifest
-              if(!result){
-                newStops.push(stop)
-              }
-            }
-            if(newStops.length>0){
-              let insertResult = await insertNewStops(report._id, driver.driverNumber, newStops);
-              if(insertResult.successfull){
-                console.log("Insert Succesfull");
-                return true;
-              }else{
-                console.log("Insert Failed");
-                return false;
-              }
-            }else{
-              console.log("no new stops  ");
-              return true;
-            }
-          }
-        }
-      */
-      // if barcode/stop does not exists upsert into driverDoc, (do a global search if the barcode exists under a diff. driver)
-      
-      console.log("Aready Exists");
-    }else{
-      console.log("Does NOT Exists - Saving new report Document");
-      let status = await report.save();
-      console.log(status);
-      if(status){
-        return true;
-      }else{
-        return false;
-      }
-      
-      // .then((err,savedDoc) => {
-      //   console.errpr(err);
-      //   console.errpr(savedDoc);
-      //   console.log("Done Saving");
-      //   return true;
-      // })
-      // .catch(err => {
-      //   return false;
-      // })
-    }
-}
-
 
 async function saveBulkItemizedReport(drs){
     let drivers = drs;
@@ -568,39 +483,52 @@ async function insertDriverDoc(reportID, driver){
 
 async function insertNewStopsIfNotExist(driver){ 
   // inserts new stops to the driver if already exists otherwise inserts a new driver document
+  let problemChild = false;
+  if(driver.driverName.includes("Freddy") || driver.driverName.includes("Timothy") || driver.driverName.includes("Kiara") || driver.driverName.includes("Destiny")){
+    problemChild = true;
+    console.log("found problem child");
+    console.log(driver.driverName);
+    console.log("CSV manifest length: ", driver.mainifest.length);
+    setTimeout(function() {
+      // Your code to be executed after 30 seconds
+      console.log("Continuing.");
+    }, 45000);
+  }
   existingDoc = await driverReportExists(driver._id);
   let result = {errors:[], insertedDocs:[], modifications:[]}
   let cacheModifications = [];
+  let stopCount = 0;
   if(existingDoc){
     for await (const stop of driver.manifest){
-      //check if the stop exisits in mongo database
+      //check if the stop exisits in other saved drivers on mongoDB
       if(!(existingDoc.manifest.some(s => s.barcode === stop.barcode))){
-        console.log("stop does not exist ...subtract first and then add");
+        // console.log("stop does not exist ...subtract first and then add");
         oldStopOwners = await DriverReport.find({ 'manifest': { $elemMatch: { barcode: stop.barcode } }});
         if(oldStopOwners){
-          console.log("Found Old Owner");
-          console.log("Pulling stop");
           for await(const oldStopOwner of oldStopOwners){
-            // console.log("old manifest length: " + oldStopOwner.manifest.length);
             oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
             // console.log("new manifest length: " + oldStopOwner.manifest.length);
             saveResult = await oldStopOwner.save();
             if(saveResult){
-              console.log("SAVED OLD OWNER SUCCESSFULLY");
+              // console.log("SAVED OLD OWNER SUCCESSFULLY");
               cacheModifications.push({driverName:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted'})
               existingDoc.manifest.push(stop);
             }else{
               result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
-              console.log("Error SAving OWNER SUCCESSFULLY");
+              // console.log("Error SAving OWNER");
             }
           }
         }else{
-          console.log("No Old Owner");
+          // console.log("No Old Owner");
           cacheModifications.push({driverName:existingDoc.driverName, stopBarcode: stop.barcode, operation:'merged'});
           existingDoc.manifest.push(stop);
         }
       }else{
         // console.log("stop Already exisist....skiping");
+      }
+      stopCount++;
+      if(problemChild){
+        console.log(stopCount);
       }
     }
     let saveExistingDocResult = await existingDoc.save();
@@ -613,8 +541,7 @@ async function insertNewStopsIfNotExist(driver){
       // console.log(saveExistingDocResult);
     }
   }else{
-    // console.log(existingDoc);
-    // console.log("Driver Does NOT Exists");
+    // driver does not exist
     // check if driiver stops exists elsewhere and pull them
     for await(const stop of driver.manifest){
       oldStopOwners = await DriverReport.find({date:driver.date, 'manifest': { $elemMatch: { barcode: stop.barcode } }});
@@ -645,6 +572,11 @@ async function insertNewStopsIfNotExist(driver){
       }else{
         console.log("No Old Owner");
       }
+
+      stopCount++;
+      if(problemChild){
+        console.log(stopCount);
+      }
     }
     try{
       let newDriverReport = new DriverReport(driver);
@@ -658,9 +590,9 @@ async function insertNewStopsIfNotExist(driver){
       }
     }catch(err){
       console.log("ERROR IN ELSE DRIVER SAVE");
-      let e = {msg:err.msg, driverName:driver.driverName};
-      console.log(e);
-      result.errors.push(e)
+      console.log(err);
+      let e = {msg:err, driverName:driver.driverName};
+      
     }
     
   }    
