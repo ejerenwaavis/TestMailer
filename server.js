@@ -319,7 +319,7 @@ async function extractCsvAttachments(data) {
     // for await (const em of emails) {
     //   console.error("Email Seq#: "+em.seq + ", From: "+ em.envelope.from[0].name + " | email: " + em.envelope.from[0].address);
     // };
-    // console.error("----END OF EMAILS PRINT FROM EXTRACT CSV ATT. ---");
+    console.error("----Today Emails to be Processed ---" + emails.length);
     for await (const email of emails) {
       // Check if the attachment is a CSV file
       // console.log("\n*** ParsedEmail ***");
@@ -484,16 +484,16 @@ async function insertDriverDoc(reportID, driver){
 async function insertNewStopsIfNotExist(driver){ 
   // inserts new stops to the driver if already exists otherwise inserts a new driver document
   let problemChild = false;
-  if(driver.driverName.includes("Freddy") || driver.driverName.includes("Timothy") || driver.driverName.includes("Kiara") || driver.driverName.includes("Destiny")){
-    problemChild = true;
-    console.log("found problem child");
-    console.log(driver.driverName);
-    console.log("CSV manifest length: ", driver.mainifest.length);
-    setTimeout(function() {
-      // Your code to be executed after 30 seconds
-      console.log("Continuing.");
-    }, 45000);
-  }
+  // if(driver.driverName.includes("Freddy") || driver.driverName.includes("Timothy") || driver.driverName.includes("Kiara") || driver.driverName.includes("Destiny")){
+  //   problemChild = true;
+  //   console.log("found problem child");
+  //   console.log(driver.driverName);
+  //   console.log("CSV manifest length: ", driver.mainifest.length);
+  //   setTimeout(function() {
+  //     // Your code to be executed after 30 seconds
+  //     console.log("Continuing.");
+  //   }, 45000);
+  // }
   existingDoc = await driverReportExists(driver._id);
   let result = {errors:[], insertedDocs:[], modifications:[]}
   let cacheModifications = [];
