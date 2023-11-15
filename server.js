@@ -482,40 +482,48 @@ async function insertDriverDoc(reportID, driver){
 }
 
 async function insertNewStopsIfNotExist(driver){ 
+  console.log("now working on " + driver.driverName);
   // inserts new stops to the driver if already exists otherwise inserts a new driver document
   let problemChild = false;
-  // if(driver.driverName.includes("Freddy") || driver.driverName.includes("Timothy") || driver.driverName.includes("Kiara") || driver.driverName.includes("Destiny")){
-  //   problemChild = true;
-  //   console.log("found problem child");
-  //   console.log(driver.driverName);
-  //   console.log("CSV manifest length: ", driver.mainifest.length);
-  //   setTimeout(function() {
-  //     // Your code to be executed after 30 seconds
-  //     console.log("Continuing.");
-  //   }, 45000);
-  // }
+  
   existingDoc = await driverReportExists(driver._id);
   let result = {errors:[], insertedDocs:[], modifications:[]}
   let cacheModifications = [];
   let stopCount = 0;
   if(existingDoc){
     for await (const stop of driver.manifest){
-      //check if the stop exisits in other saved drivers on mongoDB
+      //check if the stop exisits in the Older saved driver Document on mongoDB
       if(!(existingDoc.manifest.some(s => s.barcode === stop.barcode))){
+        
         // console.log("stop does not exist ...subtract first and then add");
         oldStopOwners = await DriverReport.find({ 'manifest': { $elemMatch: { barcode: stop.barcode } }});
+
+        // the nextline get the array of all drivers that has this barcode on thier manifest
         if(oldStopOwners){
+          let continueStopPull = true;
           for await(const oldStopOwner of oldStopOwners){
-            oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
-            // console.log("new manifest length: " + oldStopOwner.manifest.length);
-            saveResult = await oldStopOwner.save();
-            if(saveResult){
-              // console.log("SAVED OLD OWNER SUCCESSFULLY");
-              cacheModifications.push({driverName:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted'})
-              existingDoc.manifest.push(stop);
+            let osStop = await oldStopOwner.manifest.find(os => os.barcode === stop.barcode );
+            let osStopIsDelivered = (osStop.lastScan === 'Delivered');
+            if(continueStopPull){
+              if(!osStopIsDelivered){
+                oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
+                // console.log("new manifest length: " + oldStopOwner.manifest.length);
+                saveResult = await oldStopOwner.save();
+                if(saveResult){
+                  // console.log("SAVED OLD OWNER SUCCESSFULLY");
+                  cacheModifications.push({driverName:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted'})
+                  existingDoc.manifest.push(stop);
+                }else{
+                  result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
+                  // console.log("Error SAving OWNER");
+                }
+              }else{
+                console.log("stop is already delivereed locally: " + osStop.lastScan + " : " + osStop.name);
+                continueStopPull = false;
+              }
             }else{
-              result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
-              // console.log("Error SAving OWNER");
+              console.log("stop has been identified as delivereed locally, clearing other peoples manifest of stop: " + osStop.lastScan + " : " + osStop.name);
+              oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
             }
           }
         }else{
@@ -548,26 +556,62 @@ async function insertNewStopsIfNotExist(driver){
       if(oldStopOwners){
         // console.log("Found Old Owner - ELSE BLOCK");
         // console.log("Pulling stop - ELSE BLOCK");
+        let continueStopPull = true;
         for await(const oldStopOwner of oldStopOwners){
+          let osStop = await oldStopOwner.manifest.find(os => os.barcode === stop.barcode );
+          let osStopIsDelivered = (osStop.lastScan === 'Delivered');
+          if(continueStopPull){
+            if(!osStopIsDelivered){
+              oldStop = await oldStopOwner.manifest.find(os => os.barcode === stop.barcode);
+              oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
+              // console.log("new manifest length: " + oldStopOwner.manifest.length);
+              driverStopIndex = await driver.manifest.findIndex(os => os.barcode !== stop.barcode);
+              if(driverStopIndex != -1){
+                console.log("stop index not found");
+                driver.manifest[driverStopIndex] = oldStop;
+              }else{
+                driver.manifest.push(oldStop);
+              }
+              saveResult = await oldStopOwner.save();
+
+              if(saveResult){
+                // console.log("SAVED OLD OWNER SUCCESSFULLY");
+                cacheModifications.push({oldOwner:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted', newStopOwner:driver.driverName})
+                // existingDoc.manifest.push(stop);
+              }else{
+                result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
+                console.log("Error SAving OLD OWNER Successfully");
+              }
+            }else{
+              console.log("stop is already delivereed locally: " + osStop.lastScan + " : " + osStop.name);
+              continueStopPull = false;
+            }
+          }else{
+            console.log("stop has been identified as delivereed locally, clearing other peoples manifest of stop: " + osStop.lastScan + " : " + osStop.name);
+            oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
+          }
+
+          
           // console.log("old manifest length: " + oldStopOwner.manifest.length);
-          oldStop = await oldStopOwner.manifest.find(os => os.barcode === stop.barcode);
-          oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
-          driverStopIndex = await driver.manifest.findIndex(os => os.barcode !== stop.barcode);
-          if(driverStopIndex != -1){
-            driver.manifest[driverStopIndex] = oldStop;
-          }else{
-            driver.manifest.push(oldStop);
-          }
-          // console.log("new manifest length: " + oldStopOwner.manifest.length);
-          saveResult = await oldStopOwner.save();
-          if(saveResult){
-            // console.log("SAVED OLD OWNER SUCCESSFULLY IN ELSE BLOCK");
-            cacheModifications.push({oldOwner:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted', newStopOwner:driver.driverName})
-            // existingDoc.manifest.push(stop);
-          }else{
-            result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
-            // console.log("Error SAving OWNER SUCCESSFULLY");
-          }
+          // oldStop = await oldStopOwner.manifest.find(os => os.barcode === stop.barcode);
+
+          // oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
+          // driverStopIndex = await driver.manifest.findIndex(os => os.barcode !== stop.barcode);
+          // if(driverStopIndex != -1){
+          //   driver.manifest[driverStopIndex] = oldStop;
+          // }else{
+          //   driver.manifest.push(oldStop);
+          // }
+          // // console.log("new manifest length: " + oldStopOwner.manifest.length);
+          // saveResult = await oldStopOwner.save();
+          // if(saveResult){
+          //   // console.log("SAVED OLD OWNER SUCCESSFULLY IN ELSE BLOCK");
+          //   cacheModifications.push({oldOwner:oldStopOwner.driverName, stopBarcode: stop.barcode, operation:'deleted', newStopOwner:driver.driverName})
+          //   // existingDoc.manifest.push(stop);
+          // }else{
+          //   result.errors.push({msg:"Error Saving Old STOP OWNER", stopBarcode:stop.barcode, driverName:oldStopOwner.driverName})
+          //   // console.log("Error SAving OWNER SUCCESSFULLY");
+          // }
         }
       }else{
         console.log("No Old Owner");
@@ -578,6 +622,7 @@ async function insertNewStopsIfNotExist(driver){
         console.log(stopCount);
       }
     }
+    console.log("done searching for stops on driver: " + driver.driverName);
     try{
       let newDriverReport = new DriverReport(driver);
       newSaveResult = await newDriverReport.save();
@@ -592,7 +637,7 @@ async function insertNewStopsIfNotExist(driver){
       console.log("ERROR IN ELSE DRIVER SAVE");
       console.log(err);
       let e = {msg:err, driverName:driver.driverName};
-      
+      result.errors.push(e);
     }
     
   }    
