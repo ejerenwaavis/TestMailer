@@ -83,7 +83,7 @@ const driverReportSchema = new mongoose.Schema({
     }],
     lastUpdated: {type:Date, default:null},
 });
-const DriverReport = reportConn.model("DriverReport", driverReportSchema);
+const DriverReport = reportConn.model("DevDriverReport", driverReportSchema);
 var driverReports;
 
 
@@ -129,12 +129,15 @@ app.use(express.json());
 
 /* Routing Logic */
 
-app.route(APP_DIRECTORY + "/extract")
+app.route(APP_DIRECTORY + "/extract/:dateTime")
   .get(async function (req, res) {
     // console.error(new Date().toLocaleString() + " >> Request Object: ");
     // let strReq = await stringify(req);
+    let reqDateTimeConv = Number(req.params.dateTime);
+    let reqDateTime = (reqDateTimeConv != NaN) ? (reqDateTimeConv > 0 ? reqDateTimeConv : new Date().getTime()) : new Date().getTime(); 
     try{
-      let response = await bulkItemizedReportPull();
+      console.log("Final Req Date Time:  " + reqDateTime);
+      let response = await bulkItemizedReportPull({targetDate: reqDateTime});
       console.log(response);
       if(response){
         res.send(response);
@@ -310,7 +313,7 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
 async function extractCsvAttachments(data) {
     let emails = data.todayEmails;
     let errors = data.errors;
-    let today = new Date();
+    let today = data.date ? new Date(data.date) : new Date();
     today.setHours(0,0,0,0);
     drivers = [];
     driverList = [];
@@ -319,7 +322,7 @@ async function extractCsvAttachments(data) {
     // for await (const em of emails) {
     //   console.error("Email Seq#: "+em.seq + ", From: "+ em.envelope.from[0].name + " | email: " + em.envelope.from[0].address);
     // };
-    console.error("----Today Emails to be Processed ---" + emails.length);
+    console.error("----Today Emails to be Processed --- " + emails.length);
     for await (const email of emails) {
       // Check if the attachment is a CSV file
       // console.log("\n*** ParsedEmail ***");
@@ -332,7 +335,7 @@ async function extractCsvAttachments(data) {
           const fileName = attachment.filename;
           const driverNumber = fileName.split('.')[0].split('-')[0]; 
           const fileContent = attachment.content.toString('utf-8');
-          
+          console.log("now extracting for: " + (await getDriverName(driverNumber)).name);
           // Pass the file name and content to your processing function here
             let processingResult = await processCsvAttachment(fileContent, drivers, driverNumber, emailDate);
             drivers = processingResult.drivers;
@@ -801,7 +804,7 @@ const main = async () => {
 };
 
 
-const bulkItemizedReportPull = async () => {
+const bulkItemizedReportPull = async (data) => {
     // Wait until client connects and authorizes
     try {
       client = new ImapFlow({
@@ -815,71 +818,81 @@ const bulkItemizedReportPull = async () => {
       });
       await client.connect();
 
+      let todaysEmails = [];
+      let errors = [];
+      let driverList = [];
+      let targetDate = data.targetDate ? new Date(data.targetDate) : new Date(); 
+      
+      console.error("connected to mail server...");
+      
+      const mailbox = await client.mailboxOpen('INBOX');
+      console.log("Maiilbox selected");
+      
+      
+      
+      // const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
+      const emailsUIDS = await client.search({since:targetDate.toISOString(), seen:false});
+      console.log(emailsUIDS);
+      const emails = await client.fetch(emailsUIDS,{envelope:true, source:true, flags:true })
+      // const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
+      // console.error(outputDate() + "----EMAILS FETCH BELOW---");
+      // console.error(emails);
+      // console.error("----END OF EMAILS---");
+      
+      
+      
+      console.log("Total Number of emails returned: " + emailsUIDS.length);
 
+      for await (const email of emails) {
+          let isTodayMail = await isTargetDate(targetDate, new Date(email.envelope.date));
+          if(isTodayMail){
+              // console.error("Found Email: ");
 
+              // console.error('email flags');
+              // console.error(email.flags);
+              // console.error(Object.getOwnPropertyNames(email));
 
-
-      console.error("connected to mail server");
-      // Select and lock a mailbox. Throws if mailbox does not exist
-      let lock = await client.getMailboxLock('INBOX');
-        const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
-        // console.error(outputDate() + "----EMAILS FETCH BELOW---");
-        // console.error(emails);
-        // console.error("----END OF EMAILS---");
-        
-        let todaysEmails = [];
-        let errors = [];
-        let driverList = [];
-        // console.error("Email Count: "+ emails.length);
-        
-        for await (const email of emails) {
-            let isTodayMail = await isToday(new Date(email.envelope.date));
-            if(isTodayMail){
-                // console.error("Found Email: ");
-
-                // console.error('email flags');
-                // console.error(email.flags);
-                // console.error(Object.getOwnPropertyNames(email));
-
-                email.parsedEmail = await simpleParser(email.source);
-                let attachments = email.parsedEmail.attachments; 
-                for await(const attachment of attachments){
-                  let fileName = attachment.filename;
-                  let todaysManifest = await isTodaysManifest(fileName);
-                  let validFileName = await isValidFileName(fileName);
-                  if(validFileName){
-                    if(todaysManifest){
-                      todaysEmails.push(email);
-                    }else{
-                      errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Outdated Manifest"});
-                      // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' ");
-                    }
-                  }else if(attachment.contentType.includes("zip")){
-                    errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Invalid File Type"});
+              email.parsedEmail = await simpleParser(email.source);
+              let attachments = email.parsedEmail.attachments; 
+              for await(const attachment of attachments){
+                let fileName = attachment.filename;
+                let todaysManifest = await isTargetDateManifest(targetDate, fileName);
+                let validFileName = await isValidFileName(fileName);
+                if(validFileName){
+                  if(todaysManifest){
+                    todaysEmails.push(email);
                   }else{
-                    errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Mutilated/Invalid FileName or FileType"});
-                    // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' 
+                    errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Outdated Manifest"});
+                    // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' ");
                   }
+                }else if(attachment.contentType.includes("zip")){
+                  errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Invalid File Type"});
+                }else{
+                  errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Mutilated/Invalid FileName or FileType"});
+                  // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' 
                 }
-            }
-        }
-        if (todaysEmails.length > 0){
-            console.error(outputDate() + "Manifest Extraction Started...");
-            let result = await extractCsvAttachments({todayEmails:todaysEmails,errors:errors});
-            // console.log("Result Object After extractprocess");
-            // console.log(result);
-            if(result.successfull){
-                console.log('extraction and upload completed');
-                return result
-            }else{
-                console.log('extraction and upload completed with errors');
-                return result
-            }
-        }else{
-          console.error("No New Data for Today");
-          // console.error("FInishing and Exiting Mail Connection");
-          return ({successfull: true, msg: 'No New Data for Today'});
-        }
+              }
+          }
+      }
+      if (todaysEmails.length > 0){
+          console.error(outputDate() + "Manifest Extraction Started...");
+          let result = await extractCsvAttachments({todayEmails:todaysEmails, errors:errors, date:targetDate});
+          // console.log("Result Object After extractprocess");
+          // console.log(result);
+          if(result.successfull){
+              console.log('extraction and upload completed');
+              console.log("marking messaages as seen");
+              await client.messageFlagsRemove( emailsUIDS, ['\\Unseen']);
+              return result;
+          }else{
+              console.log('extraction and upload completed with errors');
+              return result
+          }
+      }else{
+        console.error("No New Data for Today");
+        // console.error("FInishing and Exiting Mail Connection");
+        return ({successfull: true, msg: 'No New Data for Today'});
+      }
     } catch(error){
       console.error(outputDate()  + "  Caught an Error in 'MAIN' function");
       console.error(error);
@@ -889,9 +902,10 @@ const bulkItemizedReportPull = async () => {
     }finally {
         // Make sure lock is released, otherwise next `getMailboxLock()` never returns
         try{
-          lock.release();
+          // lock.release();
           // log out and close connection
-          await client.logout();
+          // await client.logout();
+          await client.close();
         }catch(error){
           console.error("Caught errors trying to close the connection");
           // return ({successfull: false, msg:'Closing Error ', error:error})
@@ -928,6 +942,13 @@ async function isTodaysManifest(fileName){
     return isToday(manifestDate);
 }
 
+async function isTargetDateManifest(targetDate, fileName){
+    let fileNameSplit = fileName.split('.')[0].split('-');
+    let manifestDate = new Date(fileNameSplit[2],(fileNameSplit[3]) - 1, fileNameSplit[4]);
+
+    return isTargetDate(targetDate, manifestDate);
+}
+
 async function isValidFileName(fileName){
     let fileNameSplit = fileName.split('.')[0].split('-');
     return fileNameSplit.length > 3;
@@ -936,6 +957,15 @@ async function isValidFileName(fileName){
 
 async function isToday(dateToCheck) {
   const currentDate = new Date();
+  
+  // Set both dates to midnight to compare only the date portion
+  currentDate.setHours(0, 0, 0, 0);
+  dateToCheck.setHours(0, 0, 0, 0);
+  return dateToCheck.getTime() === currentDate.getTime();
+}
+
+async function isTargetDate(targetDate, dateToCheck) {
+  const currentDate = new Date(targetDate);
   
   // Set both dates to midnight to compare only the date portion
   currentDate.setHours(0, 0, 0, 0);
