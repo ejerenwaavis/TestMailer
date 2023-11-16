@@ -83,7 +83,7 @@ const driverReportSchema = new mongoose.Schema({
     }],
     lastUpdated: {type:Date, default:null},
 });
-const DriverReport = reportConn.model("DevDriverReport", driverReportSchema);
+const DriverReport = reportConn.model("DriverReport", driverReportSchema);
 var driverReports;
 
 
@@ -134,8 +134,8 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
     // console.error(new Date().toLocaleString() + " >> Request Object: ");
     // let strReq = await stringify(req);
     let reqDateTimeConv = Number(req.params.dateTime);
-    let reqDateTime = (reqDateTimeConv != NaN) ? (reqDateTimeConv > 0 ? reqDateTimeConv : new Date().getTime()) : new Date().getTime(); 
-    try{
+    let reqDateTime = (reqDateTimeConv != NaN) ? (reqDateTimeConv > 0 ? reqDateTimeConv : new Date().getTime()) : new Date().getTime();
+        try{
       console.log("Final Req Date Time:  " + reqDateTime);
       let response = await bulkItemizedReportPull({targetDate: reqDateTime});
       console.log(response);
@@ -822,9 +822,10 @@ const bulkItemizedReportPull = async (data) => {
       let errors = [];
       let driverList = [];
       let targetDate = data.targetDate ? new Date(data.targetDate) : new Date(); 
-      
+      targetDate.setHours(targetDate.getHours() - 6);
+
       console.error("connected to mail server...");
-      
+            
       const mailbox = await client.mailboxOpen('INBOX');
       console.log("Maiilbox selected");
       
@@ -881,8 +882,8 @@ const bulkItemizedReportPull = async (data) => {
           // console.log(result);
           if(result.successfull){
               console.log('extraction and upload completed');
-              console.log("marking messaages as seen");
-              await client.messageFlagsRemove( emailsUIDS, ['\\Unseen']);
+              // console.log("marking messaages as seen");
+              // await client.messageFlagsRemove(emailsUIDS, {uid:true}, ['\\Unseen']);
               return result;
           }else{
               console.log('extraction and upload completed with errors');
