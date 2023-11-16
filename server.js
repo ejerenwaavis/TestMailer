@@ -828,12 +828,13 @@ const bulkItemizedReportPull = async (data) => {
             
       const mailbox = await client.mailboxOpen('INBOX');
       console.log("Maiilbox selected");
+      console.error(outputDate(), " Target Date: ", targetDate);
       
       
       
       // const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
       const emailsUIDS = await client.search({since:targetDate.toISOString(), seen:false});
-      console.log(emailsUIDS);
+      console.error(outputDate(), emailsUIDS);
       const emails = await client.fetch(emailsUIDS,{envelope:true, source:true, flags:true })
       // const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
       // console.error(outputDate() + "----EMAILS FETCH BELOW---");
@@ -842,7 +843,7 @@ const bulkItemizedReportPull = async (data) => {
       
       
       
-      console.log("Total Number of emails returned: " + emailsUIDS.length);
+      console.error(outputDate(), "Total Number of emails returned: " + emailsUIDS.length);
 
       for await (const email of emails) {
           let isTodayMail = await isTargetDate(targetDate, new Date(email.envelope.date));
@@ -906,6 +907,7 @@ const bulkItemizedReportPull = async (data) => {
           // lock.release();
           // log out and close connection
           // await client.logout();
+          console.error("Closing Connection");
           await client.close();
         }catch(error){
           console.error("Caught errors trying to close the connection");
