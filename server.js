@@ -327,7 +327,7 @@ async function extractCsvAttachments(data) {
     // for await (const em of emails) {
     //   console.error("Email Seq#: "+em.seq + ", From: "+ em.envelope.from[0].name + " | email: " + em.envelope.from[0].address);
     // };
-    console.error("----Today Emails to be Processed --- " + emails.length);
+    console.error("----Today Emails to be Processed --- " + emails?.length);
     for await (const email of emails) {
       // Check if the attachment is a CSV file
       // console.log("\n*** ParsedEmail ***");
