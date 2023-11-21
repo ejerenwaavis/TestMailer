@@ -137,16 +137,19 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
     let reqDateTime = (reqDateTimeConv != NaN) ? (reqDateTimeConv > 0 ? reqDateTimeConv : new Date().getTime()) : new Date().getTime();
         try{
       console.log("Final Req Date Time:  " + reqDateTime);
-      let response = await bulkItemizedReportPull({targetDate: reqDateTime});
+      let processedEmails = await extractEmail({targetDate: reqDateTime});
+      console.log("\n Switching to local extraction process");
+      let response = await processExtractedEmail(processedEmails);
       console.log(response);
+      
       if(response){
         res.send(response);
       }else{
         res.send({successfull:false, message:"External Error"});
       }
     }catch(err){
-        // console.error("\n\nErrors:");
-        // console.error(err)
+        console.error("\n\nErrors:");
+        console.error(err)
         res.send({successfull:false, error:err, msg:"Report Processing Failed"});
       }
     // console.error(body);
@@ -173,6 +176,7 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
     let errors = [];
     let totalRecords = 0;
     let date = new Date(emailDate);
+    let driverName = await getDriverName(driverNumber);
     for (let i = 1; i < parsedJSON.data.length; i++) {
       totalRecords++;
       let jsonAddress = {};
@@ -228,61 +232,90 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                   // console.log(populateErrors);
               }
 
-                jsonAddress = {
-                  brand: brandName,
-                  barcode: (parsedJSON.data[i][0]).trim(),
-                  lastScan: (parsedJSON.data[i][1]).trim(),
-                  isPriority: await isPriority(brandName),
-                  name: name,//((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
-                  // apt:(splitAddress[1]+"").trim(),
-                  street: street,// (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim(),
-                  city: city, //(splitAddress[3] + "").trim(),
-                  state: (splitAddress[4] + "").trim(),
-                  country: countryProcessed,
-                }
-            } else {
-                jsonAddress = {
-                  brand: brandName,
-                  barcode: (parsedJSON.data[i][0]).trim(),
-                  lastScan: (parsedJSON.data[i][1]).trim(),
-                  isPriority: await isPriority(brandName),
-                  name: ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
-                  street: (splitAddress[1] + "").trim(),
-                  city: (splitAddress[2] + "").trim(),
-                  state: (splitAddress[3] + "").trim(),
-                  country: (splitAddress[4] + "").trim(),
-                }
-            }
+                        jsonAddress = {
+                          brand: brandName,
+                          barcode: (parsedJSON.data[i][0]).trim(),
+                          lastScan: (parsedJSON.data[i][1]).trim(),
+                          isPriority: await isPriority(brandName),
+                          name: name,//((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
+                          // apt:(splitAddress[1]+"").trim(),
+                          street: street,// (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim(),
+                          city: city, //(splitAddress[3] + "").trim(),
+                          state: (splitAddress[4] + "").trim(),
+                          country: countryProcessed,
+                        }
+                    } else {
+                        jsonAddress = {
+                          brand: brandName,
+                          barcode: (parsedJSON.data[i][0]).trim(),
+                          lastScan: (parsedJSON.data[i][1]).trim(),
+                          isPriority: await isPriority(brandName),
+                          name: ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
+                          street: (splitAddress[1] + "").trim(),
+                          city: (splitAddress[2] + "").trim(),
+                          state: (splitAddress[3] + "").trim(),
+                          country: (splitAddress[4] + "").trim(),
+                        }
+                    }
+                // }
+                // console.log(jsonAddress);
+                // if (jsonAddress.Name != "undefined" && jsonAddress.Name != " Unknown name") {
+                  foundBarcode = await allBarcodeCache.find((bc) => bc._id === jsonAddress.barcode )
+                  if(foundBarcode){
+                    // console.error("Found Existing Barcode: " , foundBarcode._id , " Under: " ,  foundBarcode.drivers);
+                    // if(jsonAddress.lastScan === 'Delivered' || jsonAddress.lastScan === 'Attempted' || jsonAddress.lastScan === 'Loaded'){
+                    if(jsonAddress.lastScan === 'Delivered' || jsonAddress.lastScan === 'Attempted' || jsonAddress.lastScan === 'Loaded'){
+                      for await(const driver of foundBarcode.drivers){
+                        const index = drivers.findIndex(i => i.driverNumber === driver.driverNumber);
+                        if(index !== -1){
+                          //found the driver to pull from
+                          // console.error('found the driver index to pull from: ' + index);
+                          //modifying passed driver manifest
+                          oldManifest = drivers[index].manifest;
+                          drivers[index].manifest = await oldManifest.filter((item) => item.barcode !== foundBarcode._id); 
+                          // console.error("Driver Number");
+                          // console.error("Old Manifest length: " + oldManifest.length);
+                          // console.error("New Manifest Length: " + drivers[index].manifest.length);
+                          // console.error("New Manifest :");
+                          // console.error(drivers[index].manifest);
+                        }else{
+                          console.error('Did not find driver index to pull from: ' + index);
+                        }
+                      }
+                      // console.log(jsonAddress.name, " ", jsonAddress.street, " : ", jsonAddress.lastScan);
+                      // console.log("The above from drivers");
+                      const barcodeIndex = allBarcodeCache.findIndex((bc) => bc._id === jsonAddress.barcode);
+                      allBarcodeCache[barcodeIndex].drivers.push({driverNumber:driverNumber, lastModified:date});
+                      arrayOfAddress.push(jsonAddress);
+                    }else{
+                      // dont add to manifest cos it is likely not loaded
+                      console.log("Not adding to manifest cos already has a lastScan in someonelses and you have no scan on it");
+                      // console.log(jsonAddress.name, " ", jsonAddress.street, " : ", jsonAddress.lastScan);
+                    }
+                  }else{
+                    allBarcodeCache.push({_id:jsonAddress.barcode, drivers:[{driverNumber:driverNumber, lastModified:date}]});
+                    arrayOfAddress.push(jsonAddress);
+                  }
+                // }
 
-          foundBarcode = await allBarcodeCache.find((bc) => bc._id === jsonAddress.barcode )
-          if(foundBarcode){
-            if(jsonAddress.lastScan === 'Delivered' || jsonAddress.lastScan === 'Attempted' || jsonAddress.lastScan === 'Loaded'){
-              for await(const driver of foundBarcode.drivers){
-                const index = drivers.findIndex(i => i.driverNumber === driver.driverNumber);
-                if(index !== -1){
-                  oldManifest = drivers[index].manifest;
-                  drivers[index].manifest = await oldManifest.filter((item) => item.barcode !== foundBarcode._id); 
-                }else{
-                  console.error('Did not find driver index to pull from: ' + index);
-                }
-              }
-              const barcodeIndex = allBarcodeCache.findIndex((bc) => bc._id === jsonAddress.barcode);
-              allBarcodeCache[barcodeIndex].drivers.push({driverNumber:driverNumber, lastModified:date});
-              arrayOfAddress.push(jsonAddress);
-            }else{
-              console.log("Not adding to manifest cos already has a lastScan in someonelses and you have no scan on it");
+                // console.log("Objects " + parsedJSON.data.length);
+                
+              // }
+            
               
-            }
-          }else{
-            allBarcodeCache.push({_id:jsonAddress.barcode, drivers:[{driverNumber:driverNumber, lastModified:date}]});
-            arrayOfAddress.push(jsonAddress);
-          }
+            // });  // end of brand finding
+        //   } else {
+        //     // console.log("already attempted/delivered");
           }
           
         }
-        console.error('\n', outputDate() + " Manifest Processing COMPLETED for: ", driverName, "\n || totalItems: ", arrayOfAddress.length,"\n");
+        // console.error(arrayOfAddress);
+        // console.error(arrayOfAddress.length);
+        // console.error(arrayOfAddress);
+        console.error(outputDate() + " Manifest Processing COMPLETED for: ", driverName?.name, " || totalItems: ", arrayOfAddress.length);
         return {manifest:arrayOfAddress, drivers:drivers};
 }
+
 async function extractCsvAttachments(data) {
     let emails = data.todayEmails;
     let errors = data.errors;
@@ -684,101 +717,9 @@ async function mergeManifest(oldManifest, manifest){
 
 
 
-const main = async () => {
-    // Wait until client connects and authorizes
-    // console.log(TESTMAIL);
-    // console.log(EMAILPASS);
-    try {
-      client = new ImapFlow({
-          host: 'triumphcourier.com',
-          port: 993,
-          secure: true,
-          auth: {
-              user: EMAILUSER,
-              pass: EMAILPASS
-          }
-      });
-      await client.connect();
 
 
-
-
-
-      console.error("connected to mail server");
-      // Select and lock a mailbox. Throws if mailbox does not exist
-      let lock = await client.getMailboxLock('INBOX');
-        const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
-        // console.error(outputDate() + "----EMAILS FETCH BELOW---");
-        // console.error(emails);
-        // console.error("----END OF EMAILS---");
-        
-        let todaysEmails = [];
-        let errors = [];
-        let driverList = [];
-        console.error("Email Count: "+ emails.length);
-        
-        for await (const email of emails) {
-            let isTodayMail = await isToday(new Date(email.envelope.date));
-            if(isTodayMail){
-                console.error('properties of email');
-                console.error(Object.getOwnPropertyNames(email));
-
-                email.parsedEmail = await simpleParser(email.source);
-                let attachments = email.parsedEmail.attachments; 
-                for await(const attachment of attachments){
-                  let fileName = attachment.filename;
-                  let todaysManifest = await isTodaysManifest(fileName);
-                  let validFileName = await isValidFileName(fileName);
-                  if(validFileName){
-                    if(todaysManifest){
-                      todaysEmails.push(email);
-                    }else{
-                      errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Outdated Manifest"});
-                      // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' ");
-                    }
-                  }else if(attachment.contentType.includes("zip")){
-                    errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Invalid File Type"});
-                  }else{
-                    errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Mutilated/Invalid FileName or FileType"});
-                    // console.error(email.envelope.from[0].address + " sent an outdated manifest: " + fileName + " '"+attachment.contentType+"' 
-                  }
-                }
-            }
-        }
-        if (todaysEmails.length > 0){
-            console.error(outputDate() + " >> Manifest Extraction Started ...");
-            let result = await extractCsvAttachments({todayEmails:todaysEmails,errors:errors});
-            if(result.successfull){
-                console.log('extraction and upload completed');
-                return result
-            }
-        }else{
-          console.error("No New Data for Today");
-          // console.error("FInishing and Exiting Mail Connection");
-          return ({successfull: true, msg: 'No New Data for Today'});
-        }
-    } catch(error){
-      console.error(outputDate()  + "Caught an Error in 'MAIN' function");
-      console.error(error);
-  
-      return ({successfull: false, msg:'Encountered an Error', error:error});
-
-    }finally {
-        // Make sure lock is released, otherwise next `getMailboxLock()` never returns
-        try{
-          lock.release();
-          // log out and close connection
-          await client.logout();
-        }catch(error){
-          console.error("Caught errors trying to close the connection");
-          // return ({successfull: false, msg:'Closing Error ', error:error})
-        }
-      }
-      
-};
-
-
-const bulkItemizedReportPull = async (data) => {
+async function extractEmail(data){
     // Wait until client connects and authorizes
     try {
       client = new ImapFlow({
@@ -851,26 +792,16 @@ const bulkItemizedReportPull = async (data) => {
           }
       }
       if (todaysEmails.length > 0){
+          console.log('email Extraction Completed');
           console.error(outputDate() + "Manifest Extraction Started...");
-          let result = await extractCsvAttachments({todayEmails:todaysEmails, errors:errors, date:targetDate});
-          // console.log("Result Object After extractprocess");
-          // console.log(result);
-          if(result.successfull){
-              console.log('extraction and upload completed');
-              // console.log("marking messaages as seen");
-              // await client.messageFlagsRemove(emailsUIDS, {uid:true}, ['\\Unseen']);
-              return result;
-          }else{
-              console.log('extraction and upload completed with errors');
-              return result
-          }
+          return {todayEmails:todaysEmails, errors:errors, date:targetDate};
       }else{
         console.error("No New Data for Today");
         // console.error("FInishing and Exiting Mail Connection");
         return ({successfull: true, msg: 'No New Data for Today'});
       }
     } catch(error){
-      console.error(outputDate()  + "  Caught an Error in 'MAIN' function");
+      console.error(outputDate()  + "  Caught an Error in 'EMAIL EXTRACTION' process");
       console.error(error);
   
       return ({successfull: false, msg:'Encountered an internal processing Error', error:errors});
@@ -893,6 +824,20 @@ const bulkItemizedReportPull = async (data) => {
 
 
 
+async function processExtractedEmail(processedEmails){
+  console.log("Now wroking on processed emails");
+  let result = await extractCsvAttachments(processedEmails);
+  // console.log(result);
+  if(result.successfull){
+      console.log('extraction and upload completed');
+      // console.log("marking messaages as seen");
+      // await client.messageFlagsRemove(emailsUIDS, {uid:true}, ['\\Unseen']);
+      return result;
+  }else{
+      console.log('extraction and upload completed with errors');
+      return result
+  }
+}
 
 
 //Stringify handles some characters that will cause erroes when passing to a reuest JSON object to string
