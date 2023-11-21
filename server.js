@@ -167,16 +167,15 @@ app.listen(process.env.PORT || 3055, function () {
 /** Helper Funcrions */
 // Replace this function with your own logic to process CSV files
 async function processCsvAttachment(fileContent, oldDrivers, driverNumber, emailDate) {
-    let driverName = await getDriverName(driverNumber).name;
-    console.error(outputDate() + " Processing Manifest for: ", driverName);
-
-    let drivers = oldDrivers
+  let driverName = await getDriverName(driverNumber);
+  console.error(outputDate() + " Processing Manifest for: ", driverName);
+  
+  let drivers = oldDrivers
     let parsedJSON = papa.parse(fileContent);
     let arrayOfAddress = [];
     let errors = [];
     let totalRecords = 0;
     let date = new Date(emailDate);
-    let driverName = await getDriverName(driverNumber);
     for (let i = 1; i < parsedJSON.data.length; i++) {
       totalRecords++;
       let jsonAddress = {};
@@ -384,7 +383,7 @@ async function extractCsvAttachments(data) {
         }
       }
     }
-    console.log("Manifest Extraction Completed, now saving....");
+    console.error("Manifest Extraction Completed, now saving....");
     // reportDoc = {_id:today, date:today, drivers:drivers}; // OldReportDoc Creation to be commented out
     // let saveCacheStatus = await saveBarcodeCache();
     // let status = await saveReport(reportDoc); // // OldReportDoc Saving to be commented out
