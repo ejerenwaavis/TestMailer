@@ -327,89 +327,97 @@ async function extractCsvAttachments(data) {
     // for await (const em of emails) {
     //   console.error("Email Seq#: "+em.seq + ", From: "+ em.envelope.from[0].name + " | email: " + em.envelope.from[0].address);
     // };
+    console.log(data);
+    // console.log('\n');  
+    // console.log(emails);
     console.error("----Today Emails to be Processed --- " + emails?.length);
-    for await (const email of emails) {
-      // Check if the attachment is a CSV file
-      // console.log("\n*** ParsedEmail ***");
-      let attachments = email.parsedEmail.attachments; // New Attachment process Handles multiple attachements
-      let emailDate = email.parsedEmail.date; // New Attachment process Handles multiple attachements
-      let subject = email.parsedEmail.subject;
-      // console.error(emailDate);
-      for await(const attachment of attachments){
-        if (attachment.contentType === 'text/csv' || attachment.contentType === 'text/comma-separated-values') {
-          const fileName = attachment.filename;
-          const driverNumber = fileName.split('.')[0].split('-')[0]; 
-          const fileContent = attachment.content.toString('utf-8');
-          console.log("now extracting for: " + (await getDriverName(driverNumber)).name);
-          // Pass the file name and content to your processing function here
-            let processingResult = await processCsvAttachment(fileContent, drivers, driverNumber, emailDate);
-            drivers = processingResult.drivers;
-            let manifest = processingResult.manifest;
-            
-            //check if an existing driver exists
-            let driverSearch = drivers.filter((d) => d.driverNumber === driverNumber );
-            if(driverSearch.length > 0){
-              // console.error("Duplicate Driver Found at " + emails.indexOf(email) + " "+ driverSearch[0].driverNumber);
-              // console.log(driverSearch);
-              //merge old and new manifest together
-              let existingManifest = driverSearch[0].manifest;
-              let mergedManifests = await mergeManifest(existingManifest, manifest);
-              if(mergedManifests){
-                let driverIndex = drivers.findIndex(obj => obj.driverNumber === driverNumber);
-                if(driverIndex !== -1){
-                  // console.log(driverIndex);
-                  drivers[driverIndex].manifest = mergedManifests;
+    if(emails){
+      for await (const email of emails) {
+        // Check if the attachment is a CSV file
+        // console.log("\n*** ParsedEmail ***");
+        let attachments = email.parsedEmail.attachments; // New Attachment process Handles multiple attachements
+        let emailDate = email.parsedEmail.date; // New Attachment process Handles multiple attachements
+        let subject = email.parsedEmail.subject;
+        // console.error(emailDate);
+        for await(const attachment of attachments){
+          if (attachment.contentType === 'text/csv' || attachment.contentType === 'text/comma-separated-values') {
+            const fileName = attachment.filename;
+            const driverNumber = fileName.split('.')[0].split('-')[0]; 
+            const fileContent = attachment.content.toString('utf-8');
+            console.log("now extracting for: " + (await getDriverName(driverNumber)).name);
+            // Pass the file name and content to your processing function here
+              let processingResult = await processCsvAttachment(fileContent, drivers, driverNumber, emailDate);
+              drivers = processingResult.drivers;
+              let manifest = processingResult.manifest;
+              
+              //check if an existing driver exists
+              let driverSearch = drivers.filter((d) => d.driverNumber === driverNumber );
+              if(driverSearch.length > 0){
+                // console.error("Duplicate Driver Found at " + emails.indexOf(email) + " "+ driverSearch[0].driverNumber);
+                // console.log(driverSearch);
+                //merge old and new manifest together
+                let existingManifest = driverSearch[0].manifest;
+                let mergedManifests = await mergeManifest(existingManifest, manifest);
+                if(mergedManifests){
+                  let driverIndex = drivers.findIndex(obj => obj.driverNumber === driverNumber);
+                  if(driverIndex !== -1){
+                    // console.log(driverIndex);
+                    drivers[driverIndex].manifest = mergedManifests;
+                  }
+                }else{
+                  errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Failed to Merge Manifest of Driver: "+driverNumber+""});
                 }
               }else{
-                errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Failed to Merge Manifest of Driver: "+driverNumber+""});
+                driverName = await getDriverName(driverNumber);
+                driverList.push(driverName.name);
+                drivers.push({
+                  _id: driverName.driverNumber + "-" + today.getTime(), // driverNumber-date
+                  date: today,
+                  driverNumber: driverName.driverNumber, 
+                  driverName: driverName.name, 
+                  driverAllias: (subject ? subject : email.envelope.from[0].name), 
+                  manifest:manifest,
+                  lastUpdated: null,
+                })
               }
-            }else{
-              driverName = await getDriverName(driverNumber);
-              driverList.push(driverName.name);
-              drivers.push({
-                _id: driverName.driverNumber + "-" + today.getTime(), // driverNumber-date
-                date: today,
-                driverNumber: driverName.driverNumber, 
-                driverName: driverName.name, 
-                driverAllias: (subject ? subject : email.envelope.from[0].name), 
-                manifest:manifest,
-                lastUpdated: null,
-              })
-            }
-            // return true;
-        }else{
-            errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incompatible FileType"});
-            // console.error(email.envelope.from[0].address + " sent an incompatible filetype: " + fileName + " '"+attachment.contentType+"' ");
+              // return true;
+          }else{
+              errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incompatible FileType"});
+              // console.error(email.envelope.from[0].address + " sent an incompatible filetype: " + fileName + " '"+attachment.contentType+"' ");
+          }
         }
       }
-    }
-    console.error("Manifest Extraction Completed, now saving....");
-    // reportDoc = {_id:today, date:today, drivers:drivers}; // OldReportDoc Creation to be commented out
-    // let saveCacheStatus = await saveBarcodeCache();
-    // let status = await saveReport(reportDoc); // // OldReportDoc Saving to be commented out
-    let result = {errors:errors, insertedDocs:[], modifications:[]};
-    for await (const driver of drivers){
-      try{
-        res = await insertNewStopsIfNotExist(driver);
-        result.modifications = [...result.modifications, ... res.modifications];
-        result.insertedDocs = [...result.insertedDocs, ... res.insertedDocs];
-        result.errors = [...result.errors, ...res.errors];
-      }catch (err){
-        result.errors.push(err)
-        console.log(err);
+    
+      console.error("Manifest Extraction Completed, now saving....");
+      // reportDoc = {_id:today, date:today, drivers:drivers}; // OldReportDoc Creation to be commented out
+      // let saveCacheStatus = await saveBarcodeCache();
+      // let status = await saveReport(reportDoc); // // OldReportDoc Saving to be commented out
+      let result = {errors:errors, insertedDocs:[], modifications:[]};
+      for await (const driver of drivers){
+        try{
+          res = await insertNewStopsIfNotExist(driver);
+          result.modifications = [...result.modifications, ... res.modifications];
+          result.insertedDocs = [...result.insertedDocs, ... res.insertedDocs];
+          result.errors = [...result.errors, ...res.errors];
+        }catch (err){
+          result.errors.push(err)
+          console.log(err);
+        }
       }
-    }
-    // console.log("end of processing");
-    // console.log(result);
-    // let result = await //saveBulkItemizedReport(drivers); // New Individualized Saving
+      // console.log("end of processing");
+      // console.log(result);
+      // let result = await //saveBulkItemizedReport(drivers); // New Individualized Saving
 
-    if (result){
-      console.log("Result has no errors");
-      return {successfull:true, message:"Manfest Extraction Completed", lastExtracted: new Date().toLocaleString(), errors:result.errors, driverCount:drivers.length, drivers:driverList};
+      if (result){
+        console.log("Result has no errors");
+        return {successfull:true, message:"Manfest Extraction Completed", lastExtracted: new Date().toLocaleString(), errors:result.errors, driverCount:drivers.length, drivers:driverList};
+      }else{
+        // console.log("Errors Found");
+        // console.log(result.errors.toString());
+        return {successfull:false, message:"Failed to Extract/Save Report", errors:result.errors, driverCount:drivers.length, drivers:driverList};
+      }
     }else{
-      // console.log("Errors Found");
-      // console.log(result.errors.toString());
-      return {successfull:false, message:"Failed to Extract/Save Report", errors:result.errors, driverCount:drivers.length, drivers:driverList};
+      return {successfull:false, message:"No Emails Sent", errors:errors, driverCount:drivers.length, drivers:driverList};
     }
 }
 

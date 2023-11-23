@@ -1,4 +1,4 @@
 @echo off
 title My Node.js App
-cd /d "D:\Documents\Projects\Web Developement\TestMailer"
+cd /d "C:\Users\ejere\OneDrive\Documents\Projects\Web Development\Triumph Courier\TestMailer"
 node server.js
