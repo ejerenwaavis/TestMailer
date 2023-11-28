@@ -330,7 +330,7 @@ async function extractCsvAttachments(data) {
     console.log(data);
     // console.log('\n');  
     // console.log(emails);
-    console.error("----Today Emails to be Processed --- " + emails?.length);
+    console.error("---- Today Emails to be Processed --- ", emails?.length);
     if(emails){
       for await (const email of emails) {
         // Check if the attachment is a CSV file
@@ -395,6 +395,7 @@ async function extractCsvAttachments(data) {
       let result = {errors:errors, insertedDocs:[], modifications:[]};
       for await (const driver of drivers){
         try{
+          console.log("Writing to DB for: ", driver.driverName);
           res = await insertNewStopsIfNotExist(driver);
           result.modifications = [...result.modifications, ... res.modifications];
           result.insertedDocs = [...result.insertedDocs, ... res.insertedDocs];
@@ -511,20 +512,27 @@ async function insertNewStopsIfNotExist(driver){
   //     console.log("Continuing.");
   //   }, 45000);
   // }
+  console.log("finding exisiting driver");
   existingDoc = await driverReportExists(driver._id);
+  console.log("Search Completed");
   let result = {errors:[], insertedDocs:[], modifications:[]}
   let cacheModifications = [];
   let stopCount = 0;
   if(existingDoc){
+    console.log("Search Status: ", true);
     for await (const stop of driver.manifest){
+      console.log("Compiling Stops to Online Document");
       //check if the stop exisits in other saved drivers on mongoDB
       if(!(existingDoc.manifest.some(s => s.barcode === stop.barcode))){
         // console.log("stop does not exist ...subtract first and then add");
+        console.log("Start Barcode Search");
         oldStopOwners = await DriverReport.find({ 'manifest': { $elemMatch: { barcode: stop.barcode } }});
+        console.log("Completed Barcode Search");
         if(oldStopOwners){
           for await(const oldStopOwner of oldStopOwners){
             oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
             // console.log("new manifest length: " + oldStopOwner.manifest.length);
+            console.log("Saving OLDOWNER");
             saveResult = await oldStopOwner.save();
             if(saveResult){
               // console.log("SAVED OLD OWNER SUCCESSFULLY");
@@ -548,6 +556,7 @@ async function insertNewStopsIfNotExist(driver){
         console.log(stopCount);
       }
     }
+    console.log("Saving Exisiting Doc");
     let saveExistingDocResult = await existingDoc.save();
     if(saveExistingDocResult){
       // console.log("ALL GOOD for EXISTING DOC???");
