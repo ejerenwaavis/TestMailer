@@ -320,8 +320,8 @@ async function extractCsvAttachments(data) {
     let errors = data.errors;
     let today = data.date ? new Date(data.date) : new Date();
     today.setHours(0,0,0,0);
-    drivers = [];
-    driverList = [];
+    // drivers = []; // old system that creates new drivers asn manifest is processed
+    driverList = []; // new system modifies mongoDB Schema drivers ready to be saved
     
     console.error(outputDate() + " Extracting CSV's");
     // for await (const em of emails) {
@@ -396,6 +396,7 @@ async function extractCsvAttachments(data) {
       for await (const driver of drivers){
         try{
           console.log("Writing to DB for: ", driver.driverName);
+          //do save operation here
           res = await insertNewStopsIfNotExist(driver);
           result.modifications = [...result.modifications, ... res.modifications];
           result.insertedDocs = [...result.insertedDocs, ... res.insertedDocs];
