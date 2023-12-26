@@ -158,8 +158,9 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
 
 
 app.listen(process.env.PORT || 3055, function () {
-    console.error( outputDate() + "Test Node Mailer running on Port " + ((process.env.PORT) ? process.env.PORT : 3055) + "\n");
+    console.error( outputDate() + "Test Node Mailer running on Port " + ((process.env.PORT) ? process.env.PORT : 3055));
     cacheBrands();
+    console.log("\n");
 });
 
 
@@ -927,8 +928,9 @@ async function cacheBrands(){
                 if (err) {
                 console.error(err);
                 }else{
-                if(SERVER) 
-                console.error("Brands written to file");
+                if(SERVER)
+                console.error(outputDate(), "Brands written to file");
+                console.error(outputDate(), "Ready for Extraction");
                 }
             }); 
         } else {
