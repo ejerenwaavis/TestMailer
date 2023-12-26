@@ -13,6 +13,8 @@ const bodyParser = require("body-parser")
 const Excel = require('exceljs');
 // const formidable = require('formidable');
 const mongoose = require("mongoose");
+const cors = require("cors")
+
 
 const APP_DIRECTORY = !(SERVER) ? "" : ((process.env.APP_DIRECTORY) ? (process.env.APP_DIRECTORY) : "" );
 const EMAILUSER = process.env.EMAILUSER;
@@ -125,7 +127,12 @@ app.set("view engine", "ejs");
 app.use(bodyParser.urlencoded({
   extended: true
 }));
+
 app.use(express.json());
+app.use("/extract/:dateTime", cors({
+  origin: ['http://localhost:3060', 'https://triumphcourier.com'],
+  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+}));
 
 /* Routing Logic */
 
