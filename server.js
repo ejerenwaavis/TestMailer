@@ -751,7 +751,7 @@ async function extractEmail(data){
       let errors = [];
       let driverList = [];
       let targetDate = data.targetDate ? new Date(data.targetDate) : new Date(); 
-      targetDate.setHours(targetDate.getHours() - 4);
+      // targetDate.setHours(targetDate.getHours() - 4);
 
       console.error("connected to mail server...");
             
@@ -775,7 +775,10 @@ async function extractEmail(data){
       console.error(outputDate(), "Total Number of emails returned: " + emailsUIDS.length);
 
       for await (const email of emails) {
-          let isTodayMail = await isTargetDate(targetDate, new Date(email.envelope.date));
+          let emailDate = new Date(email.envelope.date);
+          let isTodayMail = await isTargetDate(targetDate, emailDate);
+          console.log(isTodayMail);
+          console.log(emailDate, " ", targetDate);
           if(isTodayMail){
               // console.error("Found Email: ");
 
