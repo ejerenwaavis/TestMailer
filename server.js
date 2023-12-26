@@ -744,7 +744,7 @@ async function extractEmail(data){
       let errors = [];
       let driverList = [];
       let targetDate = data.targetDate ? new Date(data.targetDate) : new Date(); 
-      targetDate.setHours(targetDate.getHours() - 6);
+      targetDate.setHours(targetDate.getHours() - 4);
 
       console.error("connected to mail server...");
             
