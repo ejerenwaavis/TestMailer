@@ -13,6 +13,8 @@ const bodyParser = require("body-parser")
 const Excel = require('exceljs');
 // const formidable = require('formidable');
 const mongoose = require("mongoose");
+const cors = require('cors');
+
 
 const APP_DIRECTORY = !(SERVER) ? "" : ((process.env.APP_DIRECTORY) ? (process.env.APP_DIRECTORY) : "" );
 const EMAILUSER = process.env.EMAILUSER;
@@ -126,6 +128,11 @@ app.use(bodyParser.urlencoded({
   extended: true
 }));
 app.use(express.json());
+
+app.use("/extract/:dateTime", cors({
+  origin: ['http://localhost:3060', 'https://triumphcourier.com'],
+  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+}));
 
 /* Routing Logic */
 
@@ -522,13 +529,13 @@ async function insertNewStopsIfNotExist(driver){
   if(existingDoc){
     console.log("Search Status: ", true);
     for await (const stop of driver.manifest){
-      console.log("Compiling Stops to Online Document");
+      // console.log("Compiling Stops to Online Document");
       //check if the stop exisits in other saved drivers on mongoDB
       if(!(existingDoc.manifest.some(s => s.barcode === stop.barcode))){
         // console.log("stop does not exist ...subtract first and then add");
-        console.log("Start Barcode Search");
+        // console.log("Start Barcode Search");
         oldStopOwners = await DriverReport.find({ 'manifest': { $elemMatch: { barcode: stop.barcode } }});
-        console.log("Completed Barcode Search");
+        // console.log("Completed Barcode Search");
         if(oldStopOwners){
           for await(const oldStopOwner of oldStopOwners){
             oldStopOwner.manifest = await oldStopOwner.manifest.filter(os => os.barcode !== stop.barcode);
