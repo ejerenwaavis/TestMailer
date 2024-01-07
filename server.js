@@ -1164,17 +1164,3 @@ contractors = [
   { driverNumber : '280413', name : 'Ninozka ZABALA'},
   { driverNumber : '280445', name : 'Danny PRIESTER'},
 ]
-
-
-/*
-
-
-
-
-
-
-
-
-
-
-*/
