@@ -146,7 +146,7 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
       console.log("Final Req Date Time:  " + reqDateTime);
       let processedEmails = await extractEmail({targetDate: reqDateTime});
 
-      if(processedEmails.todayEmails.length){
+      if(processedEmails?.todayEmails?.length){
         console.log("deleting Reports Older than", new Date(reqDateTime));
         await clearOldReports(reqDateTime);
       }
