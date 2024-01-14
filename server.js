@@ -145,10 +145,12 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
         try{
       console.log("Final Req Date Time:  " + reqDateTime);
       let processedEmails = await extractEmail({targetDate: reqDateTime});
-      if(processExtractedEmail.todayEmails.length){
+
+      if(processedEmails.todayEmails.length){
         console.log("deleting Reports Older than", new Date(reqDateTime));
-        await clearOldReports();
+        await clearOldReports(reqDateTime);
       }
+      
       console.log("\n Switching to local extraction process");
       let response = await processExtractedEmail(processedEmails);
       console.log(response);
@@ -338,7 +340,7 @@ async function extractCsvAttachments(data) {
     // for await (const em of emails) {
     //   console.error("Email Seq#: "+em.seq + ", From: "+ em.envelope.from[0].name + " | email: " + em.envelope.from[0].address);
     // };
-    console.log(data);
+    // console.log(data); // UNCOMMENT TO SEE RAW-DATA
     // console.log('\n');  
     // console.log(emails);
     console.error("----Today Emails to be Processed --- " + emails?.length);
@@ -762,11 +764,12 @@ async function extractEmail(data){
       const mailbox = await client.mailboxOpen('INBOX');
       console.log("Maiilbox selected");
       console.error(outputDate(), " Target Date: ", targetDate);
-      
+      var nextDay = new Date(targetDate);
+      nextDay.setDate(targetDate.getDate() + 1);
       
       
       // const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
-      const emailsUIDS = await client.search({since:targetDate.toISOString(), seen:false});
+      const emailsUIDS = await client.search({since:targetDate.toISOString(), before:nextDay.toISOString(), seen:false});
       console.error(outputDate(), emailsUIDS);
       const emails = await client.fetch(emailsUIDS,{envelope:true, source:true, flags:true })
       // const emails = await client.fetch('1:*', { envelope:true, source:true, flags:true });
@@ -1043,7 +1046,8 @@ async function getDriverName(driverNumber){
 }
 
 async function clearOldReports(dateTime){
-  let targetDate = new Date(dateTime); 
+  let targetDate = new Date(dateTime);
+  targetDate.setDate(targetDate.getDate() - 30);
   try {
     // Use deleteMany to delete documents where 'date' is older than the provided date
     const result = await DriverReport.deleteMany({ date: { $lt: targetDate } });
