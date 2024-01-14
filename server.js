@@ -143,6 +143,18 @@ app.use("/extract/:dateTime", cors({
   optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
 }));
 
+
+app.use((req, res, next) => {
+  // Set a longer timeout (e.g., 60 seconds)
+  res.setTimeout((60000 * 15), () => {
+    console.log('Request has timed out.');
+    res.status(408).send('Request Timeout');
+  });
+
+  // Continue processing the request
+  next();
+});
+
 /* Routing Logic */
 
 app.route(APP_DIRECTORY + "/extract/:dateTime")
