@@ -166,21 +166,25 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
     let statusDone = true;
     let currentStatus = null;
     try{
-      await Status.findOne({operation:"EMAIL_READER", date:(new Date().setHours(0,0,0,0))}).then(async function (foundStatus) {
-        console.log(foundStatus);
-        const status = new Status({
-          operation: "EMAIL_READER", // driverNumber-date
-        })
-        if(!foundStatus){
-          await status.save().then(function (result) {
-            console.log(result);
-          })
-          currentStatus = status;
-        }else{
-          statusDone = foundStatus.done;
-          currentStatus = status;
-        }
-      })
+      // await Status.findOne({operation:"EMAIL_READER", date:(new Date().setHours(0,0,0,0))}).then(async function (foundStatus) {
+      //   console.log(foundStatus);
+      //   const status = new Status({
+      //     operation: "EMAIL_READER", // driverNumber-date
+      //   })
+      //   if(!foundStatus){
+      //     await status.save().then(function (result) {
+      //       console.log(result);
+      //     })
+      //     currentStatus = status;
+      //   }else{
+      //     if(foundStatus.done){
+      //       statusDone = false;
+      //       currentStatus = status;
+      //     }else{
+
+      //     }
+      //   }
+      // })
 
       if(statusDone){
         console.log("Final Req Date Time:  " + reqDateTime);
@@ -478,6 +482,8 @@ async function extractCsvAttachments(data) {
           result.modifications = [...result.modifications, ... res.modifications];
           result.insertedDocs = [...result.insertedDocs, ... res.insertedDocs];
           result.errors = [...result.errors, ...res.errors];
+          index = drivers.indexOf(driver);
+          console.log(index,"/",drivers.length ,  " || Saved: ",driver.driverName);
         }catch (err){
           result.errors.push(err)
           console.log(err);
