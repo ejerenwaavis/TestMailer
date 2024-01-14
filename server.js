@@ -145,6 +145,10 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
         try{
       console.log("Final Req Date Time:  " + reqDateTime);
       let processedEmails = await extractEmail({targetDate: reqDateTime});
+      if(processExtractedEmail.todayEmails.length){
+        console.log("deleting Reports Older than", new Date(reqDateTime));
+        await clearOldReports();
+      }
       console.log("\n Switching to local extraction process");
       let response = await processExtractedEmail(processedEmails);
       console.log(response);
@@ -1038,6 +1042,16 @@ async function getDriverName(driverNumber){
     return (driver ?  driver : {driverNumber:driverNumber, name:"***" + driverNumber.substring(3)});
 }
 
+async function clearOldReports(dateTime){
+  let targetDate = new Date(dateTime); 
+  try {
+    // Use deleteMany to delete documents where 'date' is older than the provided date
+    const result = await DriverReport.deleteMany({ date: { $lt: targetDate } });
+    console.log(`Deleted ${result.deletedCount} documents.`);
+  } catch (error) {
+    console.error('Error deleting documents:', error);
+  }
+}
 
 const priorityBrands = [
   { trackingPrefixes : [], name : 'Eat Clean To Go'},
