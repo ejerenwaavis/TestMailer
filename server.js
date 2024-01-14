@@ -174,8 +174,13 @@ app.route(APP_DIRECTORY + "/getDriverName/:driverNumber")
   .get(async function(req, res) {
     let dNum = req.params.driverNumber;
     if (dNum){
-      getDriverName(dNum).then(function (driver) {
-        res.send(driver);
+      await getDriverName(dNum).then(function (driver) {
+        if(driver.name.includes("*")){
+          driver["err"] = "NOT_FOUND"
+          res.send(driver);
+        }else{
+          res.send(driver);
+        }
       })
     }else{
       res.send({error:"INVALID DRIVER NUMBER"})
