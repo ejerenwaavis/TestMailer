@@ -170,6 +170,18 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
   })
 
 
+app.route(APP_DIRECTORY + "/getDriverName/:driverNumber")
+  .get(async function(req, res) {
+    let dNum = req.params.driverNumber;
+    if (dNum){
+      getDriverName(dNum).then(function (driver) {
+        res.send(driver);
+      })
+    }else{
+      res.send({error:"INVALID DRIVER NUMBER"})
+    }
+  })
+
 app.listen(process.env.PORT || 3055, function () {
     console.error( outputDate() + "Test Node Mailer running on Port " + ((process.env.PORT) ? process.env.PORT : 3055) + "\n");
     cacheBrands();
