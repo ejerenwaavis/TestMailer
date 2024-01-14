@@ -213,10 +213,10 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
         console.error(err)
         res.send({successfull:false, error:err, msg:"Report Processing Failed"});
     }finally{
-      currentStatus.done = true;
-      currentStatus.save().then(function (result) {
-        console.log("saved: ",result);
-      })
+      // currentStatus.done = true;
+      // currentStatus.save().then(function (result) {
+      //   console.log("saved: ",result);
+      // })
     }
     // console.error(body);
     
