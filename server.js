@@ -23,6 +23,7 @@ const EMAILPASS = process.env.EMAILPASS;
 const TEMP_FILEPATH = (process.env.TEMP_FILEPATH ? process.env.TEMP_FILEPATH : 'tmp/');
 const tempFilePath = TEMP_FILEPATH;
 const REPORTS_DB = process.env.REPORTS_DB;
+const DATA_DB = process.env.DATA_DB;
 const MONGOURI2 = process.env.MONGOURI2;
 
 const MONGOPASSWORD = process.env.MONGOPASSWORD;
@@ -90,7 +91,15 @@ var driverReports;
 
 
 
-
+const statusSchema = new mongoose.Schema({
+    operation: String, // driverNumber-date
+    date: {type:Date, default: new Date().setHours(0,0,0,0)},
+    done: {type:Boolean, default:false},
+    startedBy: {type:String, default:""}, 
+    lastUpdated: {type:Date, default:null},
+});
+const Status = reportConn.model("Status", statusSchema);
+var statusReport;
 
 
 // Mongoose Brands DB Connection Setup
@@ -142,29 +151,57 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
     // let strReq = await stringify(req);
     let reqDateTimeConv = Number(req.params.dateTime);
     let reqDateTime = (reqDateTimeConv != NaN) ? (reqDateTimeConv > 0 ? reqDateTimeConv : new Date().getTime()) : new Date().getTime();
-        try{
-      console.log("Final Req Date Time:  " + reqDateTime);
-      let processedEmails = await extractEmail({targetDate: reqDateTime});
+    let statusDone = true;
+    let currentStatus = null;
+    try{
+      await Status.findOne({operation:"EMAIL_READER", date:(new Date().setHours(0,0,0,0))}).then(async function (foundStatus) {
+        console.log(foundStatus);
+        const status = new Status({
+          operation: "EMAIL_READER", // driverNumber-date
+        })
+        if(!foundStatus){
+          await status.save().then(function (result) {
+            console.log(result);
+          })
+          currentStatus = status;
+        }else{
+          statusDone = foundStatus.done;
+          currentStatus = status;
+        }
+      })
 
-      if(processedEmails?.todayEmails?.length){
-        console.log("deleting Reports Older than", new Date(reqDateTime));
-        await clearOldReports(reqDateTime);
-      }
-      
-      console.log("\n Switching to local extraction process");
-      let response = await processExtractedEmail(processedEmails);
-      console.log(response);
-      
-      if(response){
-        res.send(response);
+      if(statusDone){
+        console.log("Final Req Date Time:  " + reqDateTime);
+        let processedEmails = await extractEmail({targetDate: reqDateTime});
+
+        if(processedEmails?.todayEmails?.length){
+          console.log("deleting Reports Older than", new Date(reqDateTime));
+          await clearOldReports(reqDateTime);
+        }
+        
+        console.log("\n Switching to local extraction process");
+        let response = await processExtractedEmail(processedEmails);
+        console.log(response);
+        
+        if(response){
+          res.send(response);
+        }else{
+          res.send({successfull:false, message:"External Error"});
+        }
+
       }else{
-        res.send({successfull:false, message:"External Error"});
+          res.send({successfull:false, err:"EXTRACTION_IN_PROGRESS", message:"Emails are Currently Being Extracted"});
       }
     }catch(err){
         console.error("\n\nErrors:");
         console.error(err)
         res.send({successfull:false, error:err, msg:"Report Processing Failed"});
-      }
+    }finally{
+      currentStatus.done = true;
+      currentStatus.save().then(function (result) {
+        console.log("saved: ",result);
+      })
+    }
     // console.error(body);
     
   })
