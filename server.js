@@ -483,7 +483,7 @@ async function extractCsvAttachments(data) {
           result.insertedDocs = [...result.insertedDocs, ... res.insertedDocs];
           result.errors = [...result.errors, ...res.errors];
           index = drivers.indexOf(driver);
-          console.log(index,"/",drivers.length ,  " || Saved: ",driver.driverName);
+          console.log((index+1),"/",drivers.length ,  " || Saved: ",driver.driverName);
         }catch (err){
           result.errors.push(err)
           console.log(err);
