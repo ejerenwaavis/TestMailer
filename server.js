@@ -1146,6 +1146,8 @@ const priorityBrands = [
   { trackingPrefixes : [], name : 'PAYCHEX'}, 
   { trackingPrefixes : [], name : 'ADP'}, 
   { trackingPrefixes : [], name : 'eGourmet Solutions Inc.'}, 
+  { trackingPrefixes : [], name : 'THE PURPLE CARROT'}, 
+  { trackingPrefixes : [], name : 'THRIVE MARKET'}, 
 ]
 
 
