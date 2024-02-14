@@ -371,7 +371,10 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                       arrayOfAddress.push(jsonAddress);
                     }else{
                       // dont add to manifest cos it is likely not loaded
-                      console.log("Not adding to manifest cos already has a lastScan in someonelses and you have no scan on it");
+                      // console.log("Adding to manifest for MLS purposes cos STOP does not have a lastScan on you");
+                       const barcodeIndex = allBarcodeCache.findIndex((bc) => bc._id === jsonAddress.barcode);
+                      allBarcodeCache[barcodeIndex].drivers.push({driverNumber:driverNumber, lastModified:date});
+                      arrayOfAddress.push(jsonAddress);
                       // console.log(jsonAddress.name, " ", jsonAddress.street, " : ", jsonAddress.lastScan);
                     }
                   }else{
@@ -856,8 +859,8 @@ async function extractEmail(data){
       for await (const email of emails) {
           let emailDate = new Date(email.envelope.date);
           let isTodayMail = await isTargetDate(targetDate, emailDate);
-          console.log(isTodayMail);
-          console.log(emailDate, " ", targetDate);
+          // console.log(isTodayMail);
+          // console.log(emailDate, " ", targetDate);
           if(isTodayMail){
               // console.error("Found Email: ");
 
