@@ -1258,4 +1258,7 @@ contractors = [
   { driverNumber : '279195', name : 'Reginald SMITH'},
   { driverNumber : '280413', name : 'Ninozka ZABALA'},
   { driverNumber : '280445', name : 'Danny PRIESTER'},
+  { driverNumber : '281963', name : 'Garion SLAYTON'},
+  { driverNumber : '282304', name : 'Gabriela Bellorin VILLARROEL'},
+  { driverNumber : '283000', name : 'Roxana FINOL DEPABLOS'},
 ]
