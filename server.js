@@ -178,8 +178,7 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
           })
           currentStatus = status;
         }else{
-          console.log("Found old status");
-          console.log(foundStatus);
+          console.log("Exisitng status: ", foundStatus.done);
           console.log("");
           currentStatus = foundStatus;
         }
@@ -231,8 +230,8 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
         currentStatus.lastUpdated = new Date();
         
         await currentStatus.save().then(function (result) {
-          console.log("Saving Concluded Status that was set by me");
-          console.log(result.done);
+          console.log("Saving Concluded Status that was set by me: Status - ", result.done);
+          
         })
       }
     }
