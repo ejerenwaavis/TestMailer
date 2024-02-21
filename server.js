@@ -96,7 +96,7 @@ const statusSchema = new mongoose.Schema({
     date: {type:Date, default: new Date().setHours(0,0,0,0)},
     done: {type:Boolean, default:false},
     startedBy: {type:String, default:""}, 
-    lastUpdated: {type:Date, default:null},
+    lastUpdated: {type:Date, default: new Date()},
 });
 const Status = reportConn.model("Status", statusSchema);
 var statusReport;
@@ -164,29 +164,41 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
     let reqDateTimeConv = Number(req.params.dateTime);
     let reqDateTime = (reqDateTimeConv != NaN) ? (reqDateTimeConv > 0 ? reqDateTimeConv : new Date().getTime()) : new Date().getTime();
     let statusDone = true;
+    let statusSetByMe = false;
     let currentStatus = null;
+
     try{
-      // await Status.findOne({operation:"EMAIL_READER", date:(new Date().setHours(0,0,0,0))}).then(async function (foundStatus) {
-      //   console.log(foundStatus);
-      //   const status = new Status({
-      //     operation: "EMAIL_READER", // driverNumber-date
-      //   })
-      //   if(!foundStatus){
-      //     await status.save().then(function (result) {
-      //       console.log(result);
-      //     })
-      //     currentStatus = status;
-      //   }else{
-      //     if(foundStatus.done){
-      //       statusDone = false;
-      //       currentStatus = status;
-      //     }else{
+      await Status.findOne({operation:"EMAIL_READER", date:(new Date(reqDateTime).setHours(0,0,0,0))}).then(async function (foundStatus) {
+        console.log('Status of Email Extraction');
+        
+        if(!foundStatus){
+          const status = new Status({
+            operation: "EMAIL_READER",
+            done:true,
+          })
+          currentStatus = status;
+        }else{
+          console.log("Found old status");
+          console.log(foundStatus);
+          console.log("");
+          currentStatus = foundStatus;
+        }
+      })
 
-      //     }
-      //   }
-      // })
 
-      if(statusDone){
+        
+      if(currentStatus.done){
+        currentStatus.done = false;
+        currentStatus.lastUpdated = new Date();
+
+        await currentStatus.save().then(function (result) {
+            console.log("Saving Modiified Current Status");
+            console.log(result);
+            statusSetByMe = true;
+        })
+        
+        
+
         console.log("Final Req Date Time:  " + reqDateTime);
         let processedEmails = await extractEmail({targetDate: reqDateTime});
 
@@ -195,6 +207,7 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
           await clearOldReports(reqDateTime);
         }
         
+      
         console.log("\n Switching to local extraction process");
         let response = await processExtractedEmail(processedEmails);
         console.log(response);
@@ -213,10 +226,15 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
         console.error(err)
         res.send({successfull:false, error:err, msg:"Report Processing Failed"});
     }finally{
-      // currentStatus.done = true;
-      // currentStatus.save().then(function (result) {
-      //   console.log("saved: ",result);
-      // })
+      if(statusSetByMe){
+        currentStatus.done = true;
+        currentStatus.lastUpdated = new Date();
+        
+        await currentStatus.save().then(function (result) {
+          console.log("Saving Concluded Status that was set by me");
+          console.log(result);
+        })
+      }
     }
     // console.error(body);
     
@@ -1130,6 +1148,14 @@ async function clearOldReports(dateTime){
   } catch (error) {
     console.error('Error deleting documents:', error);
   }
+}
+
+async function delay(time) {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      resolve("Timrd Out for: ",time);
+    }, time);
+  })
 }
 
 const priorityBrands = [
