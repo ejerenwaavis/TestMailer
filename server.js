@@ -232,7 +232,7 @@ app.route(APP_DIRECTORY + "/extract/:dateTime")
         
         await currentStatus.save().then(function (result) {
           console.log("Saving Concluded Status that was set by me");
-          console.log(result);
+          console.log(result.done);
         })
       }
     }
