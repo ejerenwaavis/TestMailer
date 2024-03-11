@@ -282,8 +282,6 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
       jsonAddress.Barcode = parsedJSON.data[i][0].trim();
       let brand = await allBrands.filter( (foundBrand) => { return (foundBrand.trackingPrefixes.includes(jsonAddress.Barcode.substring(0,7))) })
       let brandName = (brand === undefined || brand.length == 0)? "## Unregistered Brand ##" : brand[0]._id;
-      isPriorityPackage = await isPriority(brandName);
-      // jsonAddress.isPriority = await isPriority(brandName);
       
       if (jsonAddress.Barcode) { // allow for all stops scanned and unscanned
           tempSplitAddress = (parsedJSON.data[i][3] + "").split(".");
@@ -331,31 +329,56 @@ async function processCsvAttachment(fileContent, oldDrivers, driverNumber, email
                   // console.log(populateErrors);
               }
 
-                        jsonAddress = {
-                          brand: brandName,
-                          barcode: (parsedJSON.data[i][0]).trim(),
-                          lastScan: (parsedJSON.data[i][1]).trim(),
-                          isPriority: await isPriority(brandName),
-                          name: name,//((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
-                          // apt:(splitAddress[1]+"").trim(),
-                          street: street,// (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim(),
-                          city: city, //(splitAddress[3] + "").trim(),
-                          state: (splitAddress[4] + "").trim(),
-                          country: countryProcessed,
-                        }
-                    } else {
-                        jsonAddress = {
-                          brand: brandName,
-                          barcode: (parsedJSON.data[i][0]).trim(),
-                          lastScan: (parsedJSON.data[i][1]).trim(),
-                          isPriority: await isPriority(brandName),
-                          name: ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
-                          street: (splitAddress[1] + "").trim(),
-                          city: (splitAddress[2] + "").trim(),
-                          state: (splitAddress[3] + "").trim(),
-                          country: (splitAddress[4] + "").trim(),
-                        }
-                    }
+              let isPriorityPackage = false;
+              let isPayrollPackage = await isPayroll({street:street,barcode:(parsedJSON.data[i][0]).trim(), name:name});
+              
+              if(isPayrollPackage != "NaP" && isPayrollPackage != "NaVS"){
+                if(brandName.includes("##")){
+                  brandName = isPayrollPackage;
+                };
+                isPriorityPackage = true;
+              }else{
+                isPriorityPackage = await isPriority(brandName)
+              }
+
+              jsonAddress = {
+                brand: brandName,
+                barcode: (parsedJSON.data[i][0]).trim(),
+                lastScan: (parsedJSON.data[i][1]).trim(),
+                isPriority: isPriorityPackage,
+                name: name,//((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
+                // apt:(splitAddress[1]+"").trim(),
+                street: street,// (splitAddress[1] + "").trim() + ", " + (splitAddress[2] + "").trim(),
+                city: city, //(splitAddress[3] + "").trim(),
+                state: (splitAddress[4] + "").trim(),
+                country: countryProcessed,
+              }
+          } else {
+
+              let isPriorityPackage = false;
+              let isPayrollPackage = await isPayroll({street:(splitAddress[1] + "").trim(),barcode:(parsedJSON.data[i][0]).trim(), name:((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A"});
+              
+              if(isPayrollPackage != "NaP" && isPayrollPackage != "NaVS"){
+                if(brandName.includes("##")){
+                  brandName = isPayrollPackage;
+                };
+                isPriorityPackage = true;
+              }else{
+                isPriorityPackage = await isPriority(brandName)
+              }
+
+              jsonAddress = {
+                brand: brandName,
+                barcode: (parsedJSON.data[i][0]).trim(),
+                lastScan: (parsedJSON.data[i][1]).trim(),
+                isPriority: isPriorityPackage,
+                name: ((splitAddress[0] + "").trim()) ? splitAddress[0] : "N/A",
+                street: (splitAddress[1] + "").trim(),
+                city: (splitAddress[2] + "").trim(),
+                state: (splitAddress[3] + "").trim(),
+                country: (splitAddress[4] + "").trim(),
+              }
+          }
                 // }
                 // console.log(jsonAddress);
                 // if (jsonAddress.Name != "undefined" && jsonAddress.Name != " Unknown name") {
@@ -1120,6 +1143,22 @@ function outputDate() {
 
 function getToday() {
   return (new Date().toLocaleString()).setHours(0,0,0,0);
+}
+
+async function isPayroll(stop){
+  if(stop.barcode && (stop.street || stop.name)){
+    if(stop.barcode.length > 15){
+      if(stop.barcode.includes(" ")){
+        return "ADP (MC-Payroll)"
+      }else{
+        return ("Payroll (MC-Payroll)")
+      }
+    }else{
+      return "NaP"
+    }
+  }else{
+    return "NaVS"
+  }
 }
 
 async function isPriority(brandName) {
