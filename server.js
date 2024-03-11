@@ -469,8 +469,8 @@ async function extractCsvAttachments(data) {
           if (attachment.contentType === 'text/csv' || attachment.contentType === 'text/comma-separated-values') {
             const fileName = attachment.filename;
             const driverNumber = fileName.split('.')[0].split('-')[0]; 
-            const fileContent = attachment.content.toString('utf-8');
             if(driverNumber.length < 7){
+            const fileContent = attachment.content.toString('utf-8');
             console.log("now extracting for: " + (await getDriverName(driverNumber)).name);
             // Pass the file name and content to your processing function here
               let processingResult = await processCsvAttachment(fileContent, drivers, driverNumber, emailDate);
@@ -509,7 +509,7 @@ async function extractCsvAttachments(data) {
               }
               // return true;
             }else{
-              errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incompatible Driver Number"});
+              errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incompatible/Mutilated Driver Number"});
             }
           }else{
               errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incompatible FileType"});
@@ -1152,7 +1152,7 @@ function getToday() {
 
 async function isPayroll(stop){
   if(stop.barcode && (stop.street || stop.name)){
-    if(stop.barcode.length > 15){
+    if(stop.barcode.length > 15 && !(stop.barcode.includes("1LS") || stop.barcode.includes("D100") )){
       if(stop.barcode.includes(" ")){
         return "ADP (MC-Payroll)"
       }else{
