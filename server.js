@@ -470,6 +470,7 @@ async function extractCsvAttachments(data) {
             const fileName = attachment.filename;
             const driverNumber = fileName.split('.')[0].split('-')[0]; 
             const fileContent = attachment.content.toString('utf-8');
+            if(driverNumber.length < 7){
             console.log("now extracting for: " + (await getDriverName(driverNumber)).name);
             // Pass the file name and content to your processing function here
               let processingResult = await processCsvAttachment(fileContent, drivers, driverNumber, emailDate);
@@ -507,6 +508,9 @@ async function extractCsvAttachments(data) {
                 })
               }
               // return true;
+            }else{
+              errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incompatible Driver Number"});
+            }
           }else{
               errors.push({sender:email.envelope.from[0].address, fileName:fileName, fileType:attachment.contentType, message:"Incompatible FileType"});
               // console.error(email.envelope.from[0].address + " sent an incompatible filetype: " + fileName + " '"+attachment.contentType+"' ");
@@ -737,7 +741,8 @@ async function insertNewStopsIfNotExist(driver){
       console.log("ERROR IN ELSE DRIVER SAVE");
       console.log(err);
       let e = {msg:err, driverName:driver.driverName};
-      
+      console.log(e);
+      result.errors.push(e);
     }
     
   }    
