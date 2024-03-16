@@ -1220,6 +1220,8 @@ const priorityBrands = [
   { trackingPrefixes : [], name : 'eGourmet Solutions Inc.'}, 
   { trackingPrefixes : [], name : 'THE PURPLE CARROT'}, 
   { trackingPrefixes : [], name : 'THRIVE MARKET'}, 
+  { trackingPrefixes : [], name : 'ADP (MC-Payroll)'}, 
+  { trackingPrefixes : [], name : 'Payroll (MC-Payroll)'}, 
 ]
 
 
