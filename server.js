@@ -1177,6 +1177,8 @@ async function isPayroll(stop){
       }else{
         return ("Payroll (MC-Payroll)")
       }
+    }else if(stop.barcode.startsWith("TI09002")){
+        return "Payroll / Pavilon Pahrmarcy (MC-Payroll)"
     }else{
       return "NaP"
     }
